@@ -2,7 +2,7 @@ import numpy as np
 from scipy.special import erf
 import abc
 
-class Pulse(metaclass=abc.ABCMeta):
+class Laser(metaclass=abc.ABCMeta):
     @property
     def t0_at_center(self):
         return False
@@ -16,106 +16,6 @@ class Pulse(metaclass=abc.ABCMeta):
 
     def set_tprime(self,tprime):
         self.tprime = tprime
-
-    def A2E(self):
-        pass
-
-    def E2A(self):
-        raise NotImplementedError
-
-    def __call__(self,t):
-        pass
-
-class ProductPulse(Pulse):
-    def __init__(F,G,**kwargs):
-        self.F = F(**kwargs)
-        self.G = G(**kwargs)
-
-        self.return_function = lambda t: self.F(t)*self.G(t)
-
-    def A2E(self):
-        PP = self.copy()
-        PP.return_function = lambda t: self.F(t)*self.G.derivative(t) + self.derivative.F(t)*self.G(t)
-        return PP
-
-    def __call__(self,t):
-        dt = t - self.t0
-        return self.return_function(dt)
-
-class TimeDependentFunction:
-    def __call__(self,t):
-        return 0
-
-
-class HarmonicPulse(Pulse):
-    def __init__(self, E0, omega, tprime, phase=0., t0=0., field_type='E',return_derivative=False):
-        if field_type == 'E':
-            self.F0 = E0
-        elif field_type == 'A':
-            self.F0 = F_str/omega
-
-        self.omega = omega
-        self.tprime = tprime
-        self.phase = phase
-        self.t0 = t0
-        self.return_derivative = return_derivative
-
-    def return_function(self,t):
-        if not self.return_derivative:
-            return self.G.envelope(t)*np.cos(self.omega*t+self.phase)
-        else:
-            return ( self.G.derivative*np.cos(self.omega*t+self.phase)
-            + self.G.envelope*np.sin(self.omega*t+self.phase)
-
-    def __call__(self,t):
-        dt = t - self.t0
-        return self.return_function(dt)
-
-class DeltaPulse(Pulse):
-    def __init__(self, E0, t0=0., field_type='E'):
-    def __call__(self,t):
-        pass
-
-
-
-
-
-
-
-class Envelope(metaclass=abc.ABCMeta):
-    def envelope(self,t):
-        return envelope(t)
-    def derivative(self,t):
-        return derivative(t)
-
-class Gaussian(Envelope):
-    def __init__(self, sigma):
-        self.sigma2 = sigma**2
-
-    def envelope(self,t):
-        return np.exp(-t**2/(2*self.sigma2))
-
-    def derivative(self,t):
-        return -t*np.exp(-t**2/(2*self.sigma2))/self.sigma2
-
-
-class SineSquare(Envelope):
-    def __init__(self, tprime):
-        self.tprime = tprime
-
-    def envelope(self,t):
-        return ( (np.sin(np.pi * t / self.tprime) ** 2)
-        * np.heaviside(t, 1.0)
-        * np.heaviside(self.tprime - t, 1.0) )
-
-    def derivative(self,t):
-        return ( ( 2*np.pi*sin(np.pi*t/self.tprime)
-        *np.cos(np.pi*t/self.tprime) )/self.tprime
-        * np.heaviside(t, 1.0)
-        * np.heaviside(self.tprime - t, 1.0) )
-
-
-
 
 class time_dependent_polarization_vector:
     def __init__(self, p0, p1, t_cut):
@@ -146,36 +46,38 @@ class time_dependent_phase:
         return self.phi0 + self.a*t + self.b*t2 + self.c*t3
 
 
-### hard-coded delta pulse #########################################
-class length_delta(Laser):
-    def __init__(self, F_str, omega, sigma, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
-        self.omega = omega
-        self.sigma = sigma
-        self.phase = phase
-        self.t0 = t0
-
-    def _phase(self, t):
-        if callable(self.phase):
-            return self.phase(t)
-        else:
-            return self.phase
+### delta pulses #########################################
+class discrete_delta_pulse:
+    def __init__(self, field_strength, dt, **kwargs):
+        self.field_strength = field_strength
+        self.dt = dt
 
     def __call__(self, t):
-        dt = t - self.t0
-        start_t = 0.0025
-        pulse = (
-            self.F_str
-            * np.heaviside(dt - start_t, 1.0)
-            * np.heaviside((self.sigma + start_t) - dt, 1.0)
+        if t < self.dt:
+            return self.field_strength
+        else:
+            return 0
+
+
+class gaussian_delta_pulse:
+    # https://pubs.acs.org/doi/10.1021/ct200137z
+    def __init__(self, field_strength=1e-3, t_c=5, gamma=5.0, **kwargs):
+
+        self.field_strength = field_strength
+        self.t_c = t_c
+        self.gamma = gamma
+
+    def __call__(self, t):
+        return (
+            self.field_strength
+            * np.sqrt(self.gamma / np.pi)
+            * np.exp(-self.gamma * (t - self.t_c) ** 2)
         )
-        return pulse
 
 
 
 class zero_pulse(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
+    def __init__(self, field_strength, omega, tprime, phase=0., t0=0., **kwargs):
         self.t0 = t0
 
     def _phase(self, t):
@@ -190,11 +92,11 @@ class zero_pulse(Laser):
 ### sin2 envelope on A #############################################
 
 class square_velocity_plane(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -223,11 +125,11 @@ class square_velocity_plane(Laser):
         return pulse_cos,pulse_sin
 
 class square_velocity_plane_cos(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -252,11 +154,11 @@ class square_velocity_plane_cos(Laser):
         return pulse
 
 class square_velocity_plane_sin(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -280,11 +182,11 @@ class square_velocity_plane_sin(Laser):
 
 
 class square_velocity_dipole(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -307,11 +209,11 @@ class square_velocity_dipole(Laser):
 
 
 class square_length_dipole(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -338,9 +240,9 @@ class square_length_dipole(Laser):
 ### gaussian envelope on A ################################
 
 class gaussian_A_plane_cos(Laser):
-    def __init__(self, F_str, omega, sigma, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, sigma, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
         self.phase = phase
         self.t0 = t0
@@ -365,9 +267,9 @@ class gaussian_A_plane_cos(Laser):
         return pulse
 
 class gaussian_A_plane_sin(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, tprime, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
         self.phase = phase
         self.t0 = t0
@@ -392,9 +294,9 @@ class gaussian_A_plane_sin(Laser):
         return pulse
 
 class gaussian_A_velocity(Laser):
-    def __init__(self, F_str, omega, sigma, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, sigma, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
         self.phase = phase
         self.t0 = t0
@@ -419,9 +321,9 @@ class gaussian_A_velocity(Laser):
         return pulse
 
 class gaussian_A_length(Laser):
-    def __init__(self, F_str, omega, sigma, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, sigma, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
         self.phase = phase
         self.t0 = t0
@@ -452,9 +354,9 @@ class gaussian_A_length(Laser):
 ### gaussian envelope on E ################################
 
 class gaussian_E_length(Laser):
-    def __init__(self, F_str, omega, sigma, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, sigma, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
         self.sigma = sigma
         self.sigma2 = sigma**2
@@ -485,12 +387,12 @@ class gaussian_E_length(Laser):
             np.exp(-dt**2/(2*self.sigma2))
             * np.sin(self.omega * dt + self._phi(dt))
         )
-        return self.F_str*pulse
+        return self.field_strength*pulse
 
 class gaussian_E_length_cos(Laser):
-    def __init__(self, F_str, omega, sigma, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, sigma, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
         self.sigma = sigma
         self.sigma2 = sigma**2
@@ -521,13 +423,13 @@ class gaussian_E_length_cos(Laser):
             np.exp(-dt**2/(2*self.sigma2))
             * np.cos(self.omega * dt + self._phi(dt))
         )
-        return self.F_str*pulse
+        return self.field_strength*pulse
 
 class gaussian_E_velocity(Laser):
     """Dysfunctional..."""
-    def __init__(self, F_str, omega, sigma, phase=0., t0=0., N=100.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, sigma, phase=0., t0=0., N=100., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
         self.sigma = sigma
         self.sigma2 = sigma**2
@@ -570,7 +472,7 @@ class gaussian_E_velocity(Laser):
             * np.heaviside(t - self.a, 1.0)
             * np.heaviside(self.b - t, 1.0)
         )
-        return self.F_str*pulse
+        return self.field_strength*pulse
 
 
 
@@ -579,11 +481,11 @@ class gaussian_E_velocity(Laser):
 
 
 class noenv_velocity_plane_cos(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -603,11 +505,11 @@ class noenv_velocity_plane_cos(Laser):
         return pulse
 
 class noenv_velocity_plane_sin(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -629,11 +531,11 @@ class noenv_velocity_plane_sin(Laser):
 
 
 class noenv_velocity_dipole(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -654,11 +556,11 @@ class noenv_velocity_dipole(Laser):
 
 
 class noenv_length_dipole(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -688,11 +590,11 @@ class noenv_length_dipole(Laser):
 ### sin2 envelope on E ##########################################
 
 class sine_square_laser_length(Laser):
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -709,18 +611,18 @@ class sine_square_laser_length(Laser):
             * np.heaviside(dt, 1.0)
             * np.heaviside(self.tprime - dt, 1.0)
             * np.sin(self.omega * dt + self._phase(dt))
-            * self.F_str
+            * self.field_strength
         )
         return pulse
 
 
 class sine_square_laser_velocity(Laser):
     """sine square laser in velocity gauge"""
-    def __init__(self, F_str, omega, tprime, phase=0., t0=0.):
-        self.F_str = F_str
-        self.A0 = F_str/omega
+    def __init__(self, field_strength, omega, ncycles, phase=0., t0=0., **kwargs):
+        self.field_strength = field_strength
+        self.A0 = field_strength/omega
         self.omega = omega
-        self.tprime = tprime
+        self.tprime = 2*ncycles*np.pi/omega
         self.phase = phase
         self.t0 = t0
 
@@ -741,7 +643,7 @@ class sine_square_laser_velocity(Laser):
             return (1/4.)*(-f0-f1+f2-f3)
 
         pulse = (
-            self.F_str*(f(dt)-f(0))
+            self.field_strength*(f(dt)-f(0))
             * np.heaviside(dt, 1.0)
             * np.heaviside(self.tprime - dt, 1.0)
         )
@@ -754,11 +656,11 @@ class sine_square_laser_velocity(Laser):
 
 
 class Lasers:
-    def __init__(self, lasers, F_str, omega, tprime, phase=None, start=None, sigma=None):
+    def __init__(self, lasers, field_strength, omega, tprime, phase=None, start=None, sigma=None, **kwargs):
         n_pulses = len(lasers)
-        if phase is None: phase = np.zeros_like(F_str)
-        if start is None: start = np.zeros_like(F_str)
-        self.lasers = [lasers[i](f, w, tp, phase=ph) for i,f,w,tp,ph in zip(np.arange(n_pulses),F_str, omega, tprime, phase)]
+        if phase is None: phase = np.zeros_like(field_strength)
+        if start is None: start = np.zeros_like(field_strength)
+        self.lasers = [lasers[i](f, w, tp, phase=ph) for i,f,w,tp,ph in zip(np.arange(n_pulses),field_strength, omega, tprime, phase)]
         for i in np.arange(n_pulses):
             self.lasers[i].set_t0(start[i] + 0.5*float(self.lasers[i].t0_at_center)*tprime[i])
             if sigma is not None:
@@ -776,8 +678,8 @@ class Lasers:
 
 
 class adiabatic_laser:
-    def __init__(self, F_str, omega, tau=3, half_time=25):
-        self.F_str = F_str
+    def __init__(self, field_strength, omega, tau=3, half_time=25, **kwargs):
+        self.field_strength = field_strength
         self.omega = omega
         self.tau = tau
         self.half_time = half_time
@@ -787,11 +689,11 @@ class adiabatic_laser:
         return 1 - 1/(1 + e)
 
     def __call__(self, t):
-        return self.F_str*np.cos(self.omega*t)*self._Fermi(t)
+        return self.field_strength*np.cos(self.omega*t)*self._Fermi(t)
 
 class gaussian_laser:
-    def __init__(self, F_str, omega, sigma, phase=0., center=0.):
-        self.F_str = F_str
+    def __init__(self, field_strength, omega, sigma, phase=0., center=0., **kwargs):
+        self.field_strength = field_strength
         self.omega = omega
         self.sigma2 = sigma**2
         self.phi = phase
@@ -814,11 +716,11 @@ class gaussian_laser:
             np.exp(-dt**2/(2*self.sigma2))
             * np.sin(self.omega * dt + self._phi(dt))
         )
-        return self.F_str*pulse
+        return self.field_strength*pulse
 
 class gaussian_laser_cos:
-    def __init__(self, F_str, omega, center, sigma, N):
-        self.F = F_str
+    def __init__(self, field_strength, omega, center, sigma, N, **kwargs):
+        self.F = field_strength
         self.omega = omega
         self.t0 = center
         self.sigma = sigma
@@ -841,8 +743,8 @@ class gaussian_laser_cos:
         return self.F*np.cos(self.omega*(t-self.t0))*self._envelope(t)
 
 class gaussian_lasers_cos:
-    def __init__(self,  F_str, omega, center, sigma, N):
-        self.lasers = [gaussian_laser_cos(f, w, t0, s, n) for f,w,t0,s,n in zip(F_str, omega, center, sigma, N)]
+    def __init__(self,  field_strength, omega, center, sigma, N, **kwargs):
+        self.lasers = [gaussian_laser_cos(f, w, t0, s, n) for f,w,t0,s,n in zip(field_strength, omega, center, sigma, N)]
 
     def __call__(self, t):
         pulse = np.zeros_like(t, dtype=np.float64)
@@ -929,7 +831,7 @@ if __name__ == '__main__':
     plt.close(fig)
 
     t0_fs = const.physical_constants['atomic unit of time'][0]*1e15
-    F_str = 1.
+    field_strength = 1.
     omega0 = 0.2
     phi0 = 0.
     b = 0.001
@@ -938,8 +840,8 @@ if __name__ == '__main__':
     tprime = 2*t_cycle
     t0 = 0.
     t = np.linspace(0.,t0+tprime, 2000)
-    chirped_laser = sine_square_laser(F_str, omega0, tprime, phase=phase, start=t0)
-    laser = sine_square_laser(F_str, omega0, tprime, phase=phi0, start=t0)
+    chirped_laser = sine_square_laser(field_strength, omega0, tprime, phase=phase, start=t0)
+    laser = sine_square_laser(field_strength, omega0, tprime, phase=phi0, start=t0)
     freq = omega0 + phase._frequency(t-t0)
 
     fig1 = plt.figure()
@@ -957,17 +859,17 @@ if __name__ == '__main__':
     plt.close(fig1)
     plt.close(fig2)
 
-    F_str = [1.0, 1.0, 1.0]
+    field_strength = [1.0, 1.0, 1.0]
     omega = [2.8, 0.9, 4.4]
     tprime = [5., 5., 5.]
     phase = [0., 0., 0.]
     start = [0., 5., 10.]
 
-    l = sine_square_lasers(F_str, omega, tprime, phase=phase, start=start)
+    l = sine_square_lasers(field_strength, omega, tprime, phase=phase, start=start)
 
-    l0 = sine_square_laser(F_str[0], omega[0], tprime[0], phase=phase[0], start=start[0])
-    l1 = sine_square_laser(F_str[1], omega[1], tprime[1], phase=phase[1], start=start[1])
-    l2 = sine_square_laser(F_str[2], omega[2], tprime[2], phase=phase[2], start=start[2])
+    l0 = sine_square_laser(field_strength[0], omega[0], tprime[0], phase=phase[0], start=start[0])
+    l1 = sine_square_laser(field_strength[1], omega[1], tprime[1], phase=phase[1], start=start[1])
+    l2 = sine_square_laser(field_strength[2], omega[2], tprime[2], phase=phase[2], start=start[2])
 
     t = np.linspace(0.,15., 1500)
     assert np.allclose(l(t), l0(t)+l1(t)+l2(t)), "Laser mismatch"
