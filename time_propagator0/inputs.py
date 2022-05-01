@@ -5,7 +5,7 @@
 'gauge':                gauge choice. Available gauge choices: "length","velocity"
 'laser_approx':         laser approximation. "dipole","plane_wave"
 'molecule':             name of molecule input file (.xyz file).
-'n_electrons':          number of electrons
+'charge':               total charge of the molecule (n_protons-n_electrons)
 'custom_basis':         use custom basis input files (uses BSE if False)
 'basis':                basis set name
 'save_name':            name of files to store outputs (.npz file)
@@ -32,10 +32,8 @@
 'sigma':                standard deviation of gaussian-type pulses
 
 ### laser_classes ##:
-'dipole_length':        electric field, dipole approximation
-'dipole_velocity':      vector potential, dipole approximation
-'plane_wave':           time-dependent function, of an enveloped
-                        plane wave at the origin, Am(0,t)
+'pulse':        name of pulse class
+
 
 ### sample_settings ##:
 'load_all_vectors':     bool,   if True:  all L1,L2,R1,R2,M1,M2 arrays are loaded into memory at the same time
@@ -60,7 +58,7 @@ inputs = {
     'gauge': 'velocity',
     'laser_approx': 'plane_wave',
     'molecule': 'he',
-    'n_electrons': 2,
+    'charge': 2,
     'custom_basis': False,
     'basis': 'aug-cc-pvdz',
     'save_name': "tdrhf_rhf2_vpi_newop",
