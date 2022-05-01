@@ -14,11 +14,83 @@ from qcelemental import PhysicalConstantsContext
 constants = PhysicalConstantsContext('CODATA2018')
 
 
-def construct_dalton_system_ao():
-    pass
+import warnings
 
-def construct_dalton_system_rhf():
-    pass
+from quantum_systems import (
+    BasisSet,
+    SpatialOrbitalSystem,
+    GeneralOrbitalSystem,
+    QuantumSystem,
+)
+
+
+
+
+def construct_dalton_system(molecule,basis,charge,change_basis=False,custom_basis=False):
+    """sets up a QuantumSystem object with arrays computed from a
+    daltonproject.dalton.arrays.Arrays object.
+    c: custom HF coefficient matrix"""
+    from utils import symbols2nelectrons
+
+    mol = dp.Molecule(input_file=molecule)
+    mol.charge = charge
+
+    n_electrons_neutral = symbols2nelectrons(mol.elements)
+    n_electrons = n_electrons_neutral - charge
+
+    if not custom_basis:
+        basis_set = dp.Basis(basis=basis,custom_basis=custom_basis)
+    else:
+        basis_set = dp.Basis(basis=basis+'.dalinp',custom_basis=custom_basis)
+
+
+    ccsd = dp.QCMethod('CC2')
+    prop = dp.Property(response_vectors=True)
+    prop.excitation_energies(states=0)
+    result = dp.dalton.compute(mol,basis_set,ccsd,prop)
+
+    da = dp.dalton.Arrays(result)
+
+    h = da.h
+    s = da.s
+    u = da.u            #slow implementation
+    c = da.c.T
+
+    x = da.position(0)
+    y = da.position(1)
+    z = da.position(2)
+
+    px = da.momentum(0)
+    py = da.momentum(1)
+    pz = da.momentum(2)
+
+    l = len(h)
+
+    position = np.zeros((3, l, l))
+    momentum = np.zeros((3, l, l),dtype=complex)
+
+    position[0] = x
+    position[1] = y
+    position[2] = z
+
+    momentum[0] = px
+    momentum[1] = py
+    momentum[2] = pz
+
+    bs = BasisSet(l, dim=3, np=np)
+    bs.h = h
+    bs.s = s
+    bs.u = u
+    bs.nuclear_repulsion_energy = 0.0
+    bs.position = position
+    bs.momentum = momentum
+    bs.change_module(np=np)
+    system = SpatialOrbitalSystem(n_electrons, bs)
+    if change_basis:
+        system.change_basis(c)
+
+    return system
+
 
 def setup_dp_dalton(input_file,basis_name,n_excited_states,n_electrons,method='CCSD',custom_basis=False):
     from utils import symbols2nelectrons
