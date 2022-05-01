@@ -12,21 +12,23 @@ from setup_daltonproject import (
 
 from qcelemental import periodictable
 
+import importlib
+
 ################################################################################
 class Inputs:
     def __init__(self, a):
         """a: NpzFile object or dict or list (containing dicts)"""
-        self.to_listify = [
-            "field_strength",
-            "omega",
-            "time_after_pulse",
-            "ncycles",
-            "phase",
-            "sigma",
-            "pulse",
-        ]
+        #self.to_listify = [
+        #    "field_strength",
+        #    "omega",
+        #    "time_after_pulse",
+        #    "ncycles",
+        #    "phase",
+        #    "sigma",
+        #    "pulse",
+        #]
 
-        self.require_2d = ["k_direction", "polarization"]
+        #self.require_2d = ["k_direction", "polarization"]
 
         if type(a) is dict:
             self.setup_dict(a)
@@ -36,11 +38,13 @@ class Inputs:
             self.setup_npz(a)
 
     def format(self, dict_):
-        for el in dict_:
-            if (el in self.to_listify) and (type(dict_[el]) is not list):
-                dict_[el] = [dict_[el]]
-            elif el in self.require_2d:
-                dict_[el] = np.atleast_2d(dict_[el])
+        if 'pulses' in dict_.keys():
+            for el in dict_['pulses']:
+                if el in dict_:
+                    if 'polarization' in dict_[el]:
+                        dict_[el]['polarization'] = np.array(dict_[el]['polarization'])
+                    if 'k_direction' in dict_[el]:
+                        dict_[el]['k_direction'] = np.array(dict_[el]['k_direction'])
         return dict_
 
     def setup_dict(self, a):
@@ -68,10 +72,11 @@ class Inputs:
 
     def set_from_file(self,file_name):
         input_module = importlib.import_module(file_name.replace('.py',''))
-        input_attr_names = [el for el in dir(inputs) if not el.startswith('__')]
+        input_attr_names = [el for el in dir(input_module) if not el.startswith('__')]
         for el in input_attr_names:
             input_dict = getattr(input_module,el)
-            self.set_from_dict(input_dict)
+            if type(input_dict) == dict:
+                self.set_from_dict(input_dict)
 
     def set_from_dict(self,input_dict):
         for key in input_dict:
@@ -85,31 +90,48 @@ class Inputs:
         return key in self.inputs.keys()
 
     def check_consistency(self):
-        pass
+        """method to check input consistency"""
+        #check that only harmonic pulses have complex polarization vectors
+
+        if self.has_key('pulses'):
+            for el in self.inputs['pulses']:
+                s = 'pulse must have defined inputs'
+                assert self.has_key(el),s
+
+                pulse_inputs = self.inputs[el]
+
+                s = 'pulses must have defined polarization'
+                assert 'polarization' in pulse_inputs.keys(), s
+                uI = (pulse_inputs['polarization']).imag
+                if np.max(np.abs(uI)) > 1e-14:
+                    s = 'only harmonic pulses can have complex polarization vectors'
+                    assert 'omega' in self.inputs[el], s
+
 
     def __call__(self, key):
         """key: str"""
         return self.inputs[key]
 
 
-class OperatorClass:
-    def __init__(self, C, input_file, basis, n_pulses, n_basis, custom_basis=False, change_basis=True):
+class PlaneWaveOperators:
+    def __init__(self, C, input_file, pulses_cos, pulses_sin, basis, n_basis, custom_basis=False, change_basis=True):
         self.C = C
         self.change_basis = change_basis
         self.input_file = input_file
         self.basis = basis
         self.custom_basis = custom_basis
-        self.n_pulses = n_pulses
+        self.n_pulses = len(pulses_cos)
         self.n_basis = n_basis
         self.create_indices()
-        self.u = np.zeros((3, self.n_pulses))
+
         self.Ap_real = np.zeros((n_pulses, 2, n_basis, n_basis), dtype=np.complex128)
         self.Ap_imag = np.zeros((n_pulses, 2, n_basis, n_basis), dtype=np.complex128)
         self.A2 = np.zeros(
             (n_pulses, n_pulses, 4, n_basis, n_basis), dtype=np.complex128
         )
         self.A = np.zeros((n_pulses, 2, n_basis, n_basis), dtype=np.complex128)
-        self.pulses = []
+
+        self.set_pulses(pulses_cos,pulses_sin)
 
     def create_indices(self):
         self.indices = {}
@@ -120,53 +142,31 @@ class OperatorClass:
         self.indices["cos"] = 0
         self.indices["sin"] = 1
 
-    def construct_operators(
-        self, inputs, laser_list, start_times, tprime, compute_A=True
-    ):
-        F_str = inputs("field_strength")
-        omega = inputs("omega")
-        k_direction = inputs("k_direction")
-        polarization = inputs("polarization")
-        time_after_pulse = inputs("time_after_pulse")
-        ncycles = inputs("ncycles")
-        sigma = inputs("sigma")
-        phase = inputs("phase")
+    def set_pulses(pulses_cos, pulses_sin):
+        self.pulses = []
+        for i in self.n_pulses:
+            self.pulses.append([pulses_cos,pulses_sin])
 
-        dt = inputs("dt")
-        init_time = inputs("initial_time")
+    def construct_operators(
+        self, inputs, compute_A=True
+    ):
         quadratic_terms = inputs("quadratic_terms")
         cross_terms = inputs("cross_terms")
 
-        Ru = polarization.real
-        Iu = polarization.imag
-
         for i in np.arange(self.n_pulses):
-            cosp, sinp, cos2, sin2 = self.compute_vpi(omega[i], k_direction[i])
-            self.Ap_real[i, 0, :, :] = np.tensordot(Ru[i], cosp, axes=(0, 0))
-            self.Ap_real[i, 1, :, :] = np.tensordot(Ru[i], sinp, axes=(0, 0))
-            self.Ap_imag[i, 0, :, :] = np.tensordot(Iu[i], cosp, axes=(0, 0))
-            self.Ap_imag[i, 1, :, :] = np.tensordot(Iu[i], sinp, axes=(0, 0))
+            pulse_name = inputs['pulses'][i]
+            pulse_inputs = inputs[pulse_name]
+            k_direction = pulse_inputs['k_direction']
+            omega = pulse_inputs['omega']
 
+            Ru = pulse_inputs['polarization'].real
+            Iu = pulse_inputs['polarization'].imag
 
-            cos_t = lasers.Lasers(
-                [laser_list[i]],
-                [F_str[i]],
-                [omega[i]],
-                [tprime[i]],
-                phase=[phase[i]],
-                sigma=[sigma[i]],
-                start=[start_times[i]],
-            )
-            sin_t = lasers.Lasers(
-                [laser_list[i]],
-                [F_str[i]],
-                [omega[i]],
-                [tprime[i]],
-                phase=[phase[i]-np.pi/2],
-                sigma=[sigma[i]],
-                start=[start_times[i]],
-            )
-            self.pulses.append([cos_t, sin_t])
+            cosp, sinp, cos2, sin2 = self.compute_vpi(omega, k_direction)
+            self.Ap_real[i, 0, :, :] = np.tensordot(Ru, cosp, axes=(0, 0))
+            self.Ap_real[i, 1, :, :] = np.tensordot(Ru, sinp, axes=(0, 0))
+            self.Ap_imag[i, 0, :, :] = np.tensordot(Iu, cosp, axes=(0, 0))
+            self.Ap_imag[i, 1, :, :] = np.tensordot(Iu, sinp, axes=(0, 0))
 
             if quadratic_terms:
                 self.A2[i, i, 0, :, :] = cos2
@@ -174,7 +174,7 @@ class OperatorClass:
                 self.A2[i, i, 2, :, :] = np.eye(self.n_basis)
 
             if compute_A:
-                cosp, sinp, cos2, sin2 = self.compute_vpi(omega[i] / 2, k_direction[i])
+                cosp, sinp, cos2, sin2 = self.compute_vpi(omega / 2, k_direction)
                 self.A[i, 0, :, :] = cos2
                 self.A[i, 1, :, :] = sin2
 
@@ -182,8 +182,23 @@ class OperatorClass:
             pulse_nums = np.arange(self.n_pulses)
             for i in pulse_nums:
                 for j in pulse_nums[pulse_nums != i]:
-                    ck_i = omega[i] * np.array(k_direction[i])
-                    ck_j = omega[j] * np.array(k_direction[j])
+                    pulse_name_i = inputs['pulses'][i]
+                    pulse_name_j = inputs['pulses'][j]
+
+                    pulse_inputs_i = inputs[pulse_name_i]
+                    pulse_inputs_j = inputs[pulse_name_j]
+
+                    k_direction_i = pulse_inputs_i['k_direction']
+                    omega_i = pulse_inputs_i['omega']
+
+                    k_direction_i = pulse_inputs_i['k_direction']
+                    omega_i = pulse_inputs_i['omega']
+
+                    Ru = pulse_inputs['polarization'].real
+                    Iu = pulse_inputs['polarization'].imag
+
+                    ck_i = omega_i * np.array(k_direction_i)
+                    ck_j = omega_j * np.array(k_direction_j)
                     ck_p = ck_i + ck_j
                     ck_m = ck_i - ck_j
                     omega_p = (1 / 2) * np.linalg.norm(ck_p)
