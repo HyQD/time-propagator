@@ -243,14 +243,18 @@ class TimePropagator:
         Rpulses = []
         Ipulses = []
 
+        Ru = np.atleast_2d(np.zeros((self.n_pulses,3),dtype=float))
+        Iu = np.atleast_2d(np.zeros((self.n_pulses,3),dtype=float))
+
+        c = 0
         for pulse in self.inputs('pulses'):
             inputs = self.inputs(pulse)
 
-            Ru = (inputs['polarization']).real
-            Iu = (inputs['polarization']).imag
+            Ru_ = (inputs['polarization']).real
+            Iu_ = (inputs['polarization']).imag
 
-            Ru_is_zero = True if np.max(np.abs(Ru)) < 1e-14 else False
-            Iu_is_zero = True if np.max(np.abs(Iu)) < 1e-14 else False
+            Ru_is_zero = True if np.max(np.abs(Ru_)) < 1e-14 else False
+            Iu_is_zero = True if np.max(np.abs(Iu_)) < 1e-14 else False
 
             pulse_class = inputs['pulse_class']
 
@@ -267,14 +271,19 @@ class TimePropagator:
                     imag_inputs['phase'] -= np.pi/2
                 else:
                     imag_inputs['phase'] = -np.pi/2
-                Ipulse = Lasers(**imag_inputs)
+                Ipulse = Laser(**imag_inputs)
             else:
                 Ipulse = lambda t:0
 
             Rpulses.append(Rpulse)
             Ipulses.append(Ipulse)
 
-            return Rpulses,Ipulses
+            Ru[c,:] = Ru_
+            Iu[c,:] = Iu_
+
+            c += 1
+
+        return Rpulses,Ipulses,Ru,Iu
 
     def construct_linear_dipole_operators(self):
         dipole_operator = self.QS.position if self.inputs('gauge') == 'length' else self.QS.momentum
@@ -364,6 +373,8 @@ class TimePropagator:
     def construct_cross_dipole_operators(self):
         cross_dipole_operator = np.eye(self.QS.l)
 
+        operators = []
+
         pulse_nums = np.arange(self.n_pulses)
         for i in pulse_nums:
             for j in pulse_nums[pulse_nums > i]:
@@ -443,15 +454,16 @@ class TimePropagator:
         return operators
 
     def construct_quadratic_plane_wave_operators(self):
+        operators = []
         pwo = self.pwo
 
         pulse_nums = np.arange(self.n_pulses)
 
         for i in pulse_nums:
-            g1i_g1j = oc.quadratic_pulse(i, i, "cos", "cos")
-            g1i_g2j = oc.quadratic_pulse(i, i, "cos", "sin")
-            g2i_g1j = oc.quadratic_pulse(i, i, "sin", "cos")
-            g2i_g2j = oc.quadratic_pulse(i, i, "sin", "sin")
+            g1i_g1j = pwo.quadratic_pulse(i, i, "cos", "cos")
+            g1i_g2j = pwo.quadratic_pulse(i, i, "cos", "sin")
+            g2i_g1j = pwo.quadratic_pulse(i, i, "sin", "cos")
+            g2i_g2j = pwo.quadratic_pulse(i, i, "sin", "sin")
 
             uRR = np.dot(self.Ru[i],self.Ru[i])
             uRI = np.dot(self.Ru[i],self.Iu[i])
@@ -476,15 +488,15 @@ class TimePropagator:
 
             o0 = CustomOneBodyOperator(
                 p_cos_p,
-                oc.quadratic_operator(i, i, "cos+"),
+                pwo.quadratic_operator(i, i, "cos+"),
             )
             o1 = CustomOneBodyOperator(
                 p_sin_p,
-                oc.quadratic_operator(i, i, "sin+"),
+                pwo.quadratic_operator(i, i, "sin+"),
             )
             o2 = CustomOneBodyOperator(
                 p_cos_m,
-                oc.quadratic_operator(i, i, "cos-"),
+                pwo.quadratic_operator(i, i, "cos-"),
             )
             operators.append(o0)
             operators.append(o1)
@@ -493,16 +505,17 @@ class TimePropagator:
         return operators
 
     def construct_cross_plane_wave_operators(self):
+        operators = []
         pwo = self.pwo
 
         pulse_nums = np.arange(self.n_pulses)
 
         for i in pulse_nums:
             for j in pulse_nums[pulse_nums > i]:
-                g1i_g1j = oc.quadratic_pulse(i, j, "cos", "cos")
-                g1i_g2j = oc.quadratic_pulse(i, j, "cos", "sin")
-                g2i_g1j = oc.quadratic_pulse(i, j, "sin", "cos")
-                g2i_g2j = oc.quadratic_pulse(i, j, "sin", "sin")
+                g1i_g1j = pwo.quadratic_pulse(i, j, "cos", "cos")
+                g1i_g2j = pwo.quadratic_pulse(i, j, "cos", "sin")
+                g2i_g1j = pwo.quadratic_pulse(i, j, "sin", "cos")
+                g2i_g2j = pwo.quadratic_pulse(i, j, "sin", "sin")
 
                 uRR = np.dot(self.Ru[i],self.Ru[j])
                 uRI = np.dot(self.Ru[i],self.Iu[j])
@@ -532,19 +545,19 @@ class TimePropagator:
 
                 o0 = CustomOneBodyOperator(
                     p_cos_p,
-                    oc.quadratic_operator(i, j, "cos+"),
+                    pwo.quadratic_operator(i, j, "cos+"),
                 )
                 o1 = CustomOneBodyOperator(
                     p_sin_p,
-                    oc.quadratic_operator(i, j, "sin+"),
+                    pwo.quadratic_operator(i, j, "sin+"),
                 )
                 o2 = CustomOneBodyOperator(
                     p_cos_m,
-                    oc.quadratic_operator(i, j, "cos-"),
+                    pwo.quadratic_operator(i, j, "cos-"),
                 )
                 o3 = CustomOneBodyOperator(
                     p_sin_m,
-                    oc.quadratic_operator(i, j, "sin-"),
+                    pwo.quadratic_operator(i, j, "sin-"),
                 )
                 operators.append(o0)
                 operators.append(o1)
@@ -570,7 +583,7 @@ class TimePropagator:
         self.num_steps = int(total_time / self.inputs('dt')) + 1
 
 
-        self.Rpulses,self.Ipulses = self.construct_pulses()
+        self.Rpulses,self.Ipulses,self.Ru,self.Iu = self.construct_pulses()
 
         if self.inputs("laser_approx") == "dipole":
             operators = self.construct_linear_dipole_operators()
@@ -595,18 +608,16 @@ class TimePropagator:
 
             pwo = PlaneWaveOperators(
                 C,
-                self.input_file,
+                self.inputs('molecule'),
                 self.inputs("basis"),
-                self.n_pulses,
+                self.Rpulses,
+                self.Ipulses,
                 self.QS.l,
                 custom_basis=self.inputs("custom_basis"),
                 change_basis=True
             )
             pwo.construct_operators(
                 inputs,
-                laser_list,
-                self.start_times,
-                tprime,
                 compute_A=compute_A,
             )
             self.pwo = pwo
@@ -618,7 +629,6 @@ class TimePropagator:
                 operators += self.construct_quadratic_plane_wave_operators()
             if self.inputs("cross_terms"):
                 operators += self.construct_cross_plane_wave_operators()
-            i
 
         self.QS.set_time_evolution_operator(operators)
 
@@ -669,41 +679,41 @@ class TimePropagator:
         for m in np.arange(self.n_pulses):
             # cos (i=1)
             # NOTE: the linear_operator is already contracted with the polarization vector
-            Z00_l = -1j * (self.oc.linear_operator(m, "cos", "real", C=C, C_tilde=C_tilde))
+            Z00_l = -1j * (self.pwo.linear_operator(m, "cos", "real", C=C, C_tilde=C_tilde))
 
             Z00_q = 0
             for n in np.arange(self.n_pulses):
                 Z00_q00 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        + self.oc.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "cos")(t)
+                    * self.pwo.linear_pulse(n, "cos")(t)
                 )
                 Z00_q11 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        + self.oc.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "sin")(t)
+                    * self.pwo.linear_pulse(n, "sin")(t)
                 )
                 Z00_q10 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        + self.oc.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "cos")(t)
+                    * self.pwo.linear_pulse(n, "cos")(t)
                 )
                 Z00_q01 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        + self.oc.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "sin")(t)
+                    * self.pwo.linear_pulse(n, "sin")(t)
                 )
 
                 Z00_q += (
@@ -718,7 +728,7 @@ class TimePropagator:
             Z00 = Z00_l + Z00_q
             F[0, 0, m] = np.einsum("qp,pq ->", rho_qp, Z00)
 
-            Z01_l = -1j * (self.oc.linear_operator(m, "cos", "imag", C=C, C_tilde=C_tilde))
+            Z01_l = -1j * (self.pwo.linear_operator(m, "cos", "imag", C=C, C_tilde=C_tilde))
             Z01_q = 0
 
             Z01_q += (
@@ -736,41 +746,41 @@ class TimePropagator:
         #F11,m and F10,m
         for m in np.arange(self.n_pulses):
             # sin (i=2)
-            Z11_l = -1j * (self.oc.linear_operator(m, "sin", "real", C=C, C_tilde=C_tilde))
+            Z11_l = -1j * (self.pwo.linear_operator(m, "sin", "real", C=C, C_tilde=C_tilde))
 
             Z11_q = 0
             for n in np.arange(self.n_pulses):
                 Z11_q00 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        - self.oc.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "cos")(t)
+                    * self.pwo.linear_pulse(n, "cos")(t)
                 )
                 Z11_q11 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        - self.oc.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "sin")(t)
+                    * self.pwo.linear_pulse(n, "sin")(t)
                 )
                 Z11_q10 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        - self.oc.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "cos")(t)
+                    * self.pwo.linear_pulse(n, "cos")(t)
                 )
                 Z11_q01 = (
                     0.5
                     * (
-                        self.oc.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        - self.oc.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
                     )
-                    * self.oc.linear_pulse(n, "sin")(t)
+                    * self.pwo.linear_pulse(n, "sin")(t)
                 )
 
 
@@ -786,7 +796,7 @@ class TimePropagator:
             Z11 = Z11_l + Z11_q
             F[1, 1, m] = np.einsum("qp,pq ->", rho_qp, Z11)
 
-            Z10_l = -1j * (self.oc.linear_operator(m, "sin", "imag", C=C, C_tilde=C_tilde))
+            Z10_l = -1j * (self.pwo.linear_operator(m, "sin", "imag", C=C, C_tilde=C_tilde))
             Z10_q = 0
 
             Z10_q += (
@@ -814,6 +824,45 @@ class TimePropagator:
                 F[:, m] += -1j * self.inputs("n_electrons") * self.Rpulses[m](t)
 
         return F
+
+    def compute_dipole_vector_potential(self):
+        A = np.zeros((3,self.QS.l,self.QS.l),dtype=np.complex128)
+
+        for i in np.arange(3):
+            A[i,:,:] = np.eye(self.QS.l)
+
+        pulse = np.zeros(3)
+        for i in np.arange(self.n_pulses):
+            pulse += self.Ru[i,:]*self.Rpulses[i](self.r.t)+self.Iu[i,:]*self.Ipulses[i](self.r.t)
+
+        for i in np.arange(3):
+            A[i,:,:] *= pulse[i]
+
+        return A
+
+    def compute_plane_wave_vector_potential(self):
+        A = np.zeros((3,self.QS.l,self.QS.l),dtype=np.complex128)
+        for i in np.arange(self.n_pulses):
+            for j in np.arange(3):
+                A[j] += (self.Ru[i,j]* (
+                    self.pwo.A_operator(i,"cos")*self.pwo.linear_pulse(i,"cos")(self.r.t)
+                +   self.pwo.A_operator(i,"sin")*self.pwo.linear_pulse(i,"sin")(self.r.t) )
+                )
+                A[j] += (self.Iu[i,j]* (
+                    self.pwo.A_operator(i,"cos")*self.pwo.linear_pulse(i,"sin")(self.r.t)
+                -   self.pwo.A_operator(i,"sin")*self.pwo.linear_pulse(i,"cos")(self.r.t) )
+                )
+        return A
+
+
+
+        pi += (
+            self.pwo.linear_pulse(k, "cos")(time_points[i + 1])
+            * self.pwo.A_operator(k, "cos")
+            + self.pwo.linear_pulse(k, "sin")(time_points[i + 1])
+            * self.pwo.A_operator(k, "sin")
+        ) * self.Ru[k][j]
+        return 0
 
     def setup_samples(self, samples=None):
         if samples is None:
@@ -989,32 +1038,18 @@ class TimePropagator:
 
             # KINETIC MOMENTUM
             if self.inputs("sample_kinetic_momentum"):
+                pi = self.QS.momentum.copy()
+                if self.inputs("gauge") == 'velocity':
+                    if self.inputs("laser_approx") == "dipole":
+                        A = self.compute_dipole_vector_potential()
+                    else:
+                        A = self.compute_plane_wave_vector_potential()
+                    pi += A
                 for j in range(3):
-                    pi = self.QS.momentum[j].copy()
-                    if self.inputs("gauge") == "velocity":
-                        for k in np.arange(self.n_pulses):
-                            if self.inputs("laser_approx") == "dipole":
-                                pi += (
-                                    np.eye(self.QS.l)
-                                    * self.Rpulses[k](time_points[i + 1])
-                                    * self.Ru[k][j]
-                                )
-                                pi += (
-                                    np.eye(self.QS.l)
-                                    * self.Ipulses[k](time_points[i + 1])
-                                    * self.Iu[k][j]
-                                )
-                            else:
-                                pi += (
-                                    self.oc.linear_pulse(k, "cos")(time_points[i + 1])
-                                    * self.oc.A_operator(k, "cos")
-                                    + self.oc.linear_pulse(k, "sin")(time_points[i + 1])
-                                    * self.oc.A_operator(k, "sin")
-                                ) * self.polarization[k][j]
                     self.samples["kinetic_momentum"][
                         i + 1, j
                     ] = self.tdcc.compute_one_body_expectation_value(
-                        self.r.t, self.r.y, pi
+                        self.r.t, self.r.y, pi[j]
                     )
 
             # QUADRUPOLE MOMENTS
@@ -1153,12 +1188,4 @@ class TimePropagator:
         return self.samples
 
 
-
-
-def get_laser_list(pulses):
-    n_pulses = len(pulses)
-    laser_list = []
-    for i in np.arange(n_pulses):
-        laser_list.append(vars(lasers)[pulses[i]])
-    return laser_list
 
