@@ -114,7 +114,7 @@ class Inputs:
 
 
 class PlaneWaveOperators:
-    def __init__(self, C, input_file, pulses_cos, pulses_sin, basis, n_basis, custom_basis=False, change_basis=True):
+    def __init__(self, C, input_file, basis, pulses_cos, pulses_sin, n_basis, custom_basis=False, change_basis=True):
         self.C = C
         self.change_basis = change_basis
         self.input_file = input_file
@@ -123,6 +123,8 @@ class PlaneWaveOperators:
         self.n_pulses = len(pulses_cos)
         self.n_basis = n_basis
         self.create_indices()
+
+        n_pulses = self.n_pulses
 
         self.Ap_real = np.zeros((n_pulses, 2, n_basis, n_basis), dtype=np.complex128)
         self.Ap_imag = np.zeros((n_pulses, 2, n_basis, n_basis), dtype=np.complex128)
@@ -142,10 +144,10 @@ class PlaneWaveOperators:
         self.indices["cos"] = 0
         self.indices["sin"] = 1
 
-    def set_pulses(pulses_cos, pulses_sin):
+    def set_pulses(self, pulses_cos, pulses_sin):
         self.pulses = []
-        for i in self.n_pulses:
-            self.pulses.append([pulses_cos,pulses_sin])
+        for i in np.arange(self.n_pulses):
+            self.pulses.append([pulses_cos[i],pulses_sin[i]])
 
     def construct_operators(
         self, inputs, compute_A=True
@@ -154,8 +156,8 @@ class PlaneWaveOperators:
         cross_terms = inputs("cross_terms")
 
         for i in np.arange(self.n_pulses):
-            pulse_name = inputs['pulses'][i]
-            pulse_inputs = inputs[pulse_name]
+            pulse_name = inputs('pulses')[i]
+            pulse_inputs = inputs(pulse_name)
             k_direction = pulse_inputs['k_direction']
             omega = pulse_inputs['omega']
 
