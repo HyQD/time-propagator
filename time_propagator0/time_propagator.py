@@ -1,41 +1,26 @@
 import numpy as np
-import sys
-import importlib
-import quantum_systems
 from quantum_systems.time_evolution_operators import (
-    DipoleFieldInteraction,
     CustomOneBodyOperator,
 )
-from coupled_cluster.rcc2 import RCC2, TDRCC2
 from scipy.integrate import complex_ode
 from gauss_integrator import GaussIntegrator
 import tqdm
-import matplotlib.pyplot as plt
-import lasers
-from projectors import (
+
+from time_propagator0 import lasers
+
+from time_propagator0.projectors import (
     two_component_EOM_projector,
     conventional_EOM_projector,
     LR_projector,
     rccsd_overlap,
 )
-from helper_functions import compute_R0_ as compute_R0
-import daltonproject as dp
-import os
+from time_propagator0.helper_functions import compute_R0_ as compute_R0
 
-from utils import Inputs, PlaneWaveOperators
+from time_propagator0.utils import Inputs, PlaneWaveOperators
 
-from quantum_systems import (
-    BasisSet,
-    SpatialOrbitalSystem,
-    GeneralOrbitalSystem,
-    QuantumSystem,
-)
-
-from setup_daltonproject import (
+from time_propagator0.setup_daltonproject import (
     setup_system_da,
     setup_dp_dalton,
-    setup_dp_molcas,
-    get_amps,
     get_response_vectors,
 )
 
@@ -44,14 +29,13 @@ import time
 
 class TimePropagator:
     def __init__(self, method=None, inputs=None, **kwargs):
-        """ inputs: str (input file name) or dict
-        """
-        #setup input parameters
+        """inputs: str (input file name) or dict"""
+        # setup input parameters
         self.inputs = Inputs({})
-        self.inputs.set_from_file('default_inputs')
+        self.inputs.set_from_file("time_propagator0.default_inputs")
 
         if inputs is not None:
-            s = 'inputs must be either str or dict'
+            s = "inputs must be either str or dict"
             assert (type(inputs) == str) or (type(inputs) == dict), s
 
             if type(inputs) == str:
@@ -63,32 +47,50 @@ class TimePropagator:
 
         if method is None:
             s = "'method' parameter must be defined at initiation"
-            assert self.inputs.has_key('method'), s
+            assert self.inputs.has_key("method"), s
         else:
-            self.inputs.set('method',method)
+            self.inputs.set("method", method)
 
         self.inputs.check_consistency()
 
-        #defining calculation type
-        corr_methods = ["rcc2","rccsd","romp2","roaccd","ccs","cc2","ccsd","omp2","oaccd"]
+        # defining calculation type
+        corr_methods = [
+            "rcc2",
+            "rccsd",
+            "romp2",
+            "roaccd",
+            "rcis",
+            "ccs",
+            "cc2",
+            "ccsd",
+            "omp2",
+            "oaccd",
+        ]
         orb_adapt_methods = ["romp2", "roaccd", "omp2", "oaccd", "rhf"]
-        restricted_methods = ["rcc2","rccsd","romp2","roaccd", "rhf"]
+        restricted_methods = ["rcc2", "rccsd", "romp2", "roaccd", "rhf", "rcis"]
 
-        self.correlated = (
-            True if self.inputs("method") in corr_methods else False
-        )
+        self.correlated = True if self.inputs("method") in corr_methods else False
         self.orbital_adaptive = (
             True if self.inputs("method") in orb_adapt_methods else False
         )
-        self.restricted = (
-            True if self.inputs("method") in restricted_methods else False
-        )
+        self.restricted = True if self.inputs("method") in restricted_methods else False
 
-        implemented_methods = [ "rcc2","rccsd","romp2","roaccd","rhf",
-                                "ccs","cc2","ccsd","omp2","oaccd"]
+        implemented_methods = [
+            "rcc2",
+            "rccsd",
+            "romp2",
+            "roaccd",
+            "rhf",
+            "rcis",
+            "ccs",
+            "cc2",
+            "ccsd",
+            "omp2",
+            "oaccd",
+        ]
 
-        s = r'Computational method is not supported'
-        assert self.inputs('method') in implemented_methods, s
+        s = r"Computational method is not supported"
+        assert self.inputs("method") in implemented_methods, s
 
         if method == "rcc2":
             from coupled_cluster.rcc2 import RCC2 as CC
@@ -105,6 +107,9 @@ class TimePropagator:
         elif method == "rhf":
             from hartree_fock.rhf import RHF as CC
             from hartree_fock.rhf import TDRHF as TDCC
+        elif method == "rcis":
+            from ci_singles import CIS as CC
+            from ci_singles import TDCIS as TDCC
         elif method == "ccs":
             from coupled_cluster.ccs import CCS as CC
             from coupled_cluster.ccs import TDCCS as TDCC
@@ -124,56 +129,79 @@ class TimePropagator:
         self.CC = CC
         self.TDCC = TDCC
 
-    #def set_default_inputs(self):
-    #    default_inputs = importlib.import_module("default_inputs").default_inputs
-    #    for key in default_inputs:
-    #        if not key in self.inputs:
-    #            self.inputs.set(key,default_inputs[key])
-
     def setup_quantum_system(self, program, molecule=None, charge=None, basis=None):
-        """program: 'pyscf' ,'dalton', """
-        implemented = ['pyscf','dalton']
+        """program: 'pyscf' ,'dalton',"""
+        implemented = ["pyscf", "dalton"]
         if not program in implemented:
             raise NotImplementedError
 
         if molecule is not None:
-            self.inputs.set('molecule',molecule)
+            self.inputs.set("molecule", molecule)
         if basis is not None:
-            self.inputs.set('basis',basis)
+            self.inputs.set("basis", basis)
         if charge is not None:
-            self.inputs.set('charge',charge)
+            self.inputs.set("charge", charge)
 
+        molecule = self.inputs("molecule")
+        basis = self.inputs("basis")
+        charge = self.inputs("charge")
 
-        molecule = self.inputs('molecule')
-        basis = self.inputs('basis')
-        charge = self.inputs('charge')
-
-        if program == 'pyscf':
+        if program == "pyscf":
             if (self.correlated) and (self.restricted):
-                from quantum_systems import construct_pyscf_system_rhf
-                QS = construct_pyscf_system_rhf(molecule=molecule,basis=basis,charge=charge)
+                from time_propagator0.custom_system_mod import (
+                    construct_pyscf_system_rhf,
+                )
+
+                QS, self.C = construct_pyscf_system_rhf(
+                    molecule=molecule,
+                    basis=basis,
+                    charge=charge,
+                    add_spin=False,
+                    anti_symmetrize=False,
+                )
             elif (not self.correlated) and (self.restricted):
-                from quantum_systems import construct_pyscf_system_ao
-                QS = construct_pyscf_system_ao(molecule=molecule,basis=basis,charge=charge)
-        elif program == 'dalton':
+                from time_propagator0.custom_system_mod import construct_pyscf_system_ao
+
+                QS = construct_pyscf_system_ao(
+                    molecule=molecule,
+                    basis=basis,
+                    charge=charge,
+                    add_spin=False,
+                    anti_symmetrize=False,
+                )
+            elif (self.correlated) and (not self.restricted):
+                from time_propagator0.custom_system_mod import (
+                    construct_pyscf_system_rhf,
+                )
+
+                QS, self.C = construct_pyscf_system_rhf(
+                    molecule=molecule, basis=basis, charge=charge
+                )
+        elif program == "dalton":
             if (self.correlated) and (self.restricted):
-                from setup_daltonproject import construct_dalton_system
-                QS = construct_dalton_system(molecule=molecule,basis=basis,charge=charge,change_basis=True)
+                from time_propagator0.setup_daltonproject import construct_dalton_system
+
+                QS, self.C = construct_dalton_system(
+                    molecule=molecule, basis=basis, charge=charge, change_basis=True
+                )
             elif (not self.correlated) and (self.restricted):
-                from setup_daltonproject import construct_dalton_system
-                QS = construct_dalton_system(molecule=molecule,basis=basis,charge=charge,change_basis=False)
+                from time_propagator0.setup_daltonproject import construct_dalton_system
+
+                QS, C = construct_dalton_system(
+                    molecule=molecule, basis=basis, charge=charge, change_basis=False
+                )
         self.set_quantum_system(QS)
 
-    def set_quantum_system(self,QS):
+    def set_quantum_system(self, QS):
         """QS: QuantumSystem"""
         self.QS = QS
 
     def setup_response_vectors(self, program):
         """program: str"""
-        implemented = ['dalton']
+        implemented = ["dalton"]
         if not program in implemented:
             raise NotImplementedError
-        if program == 'dalton':
+        if program == "dalton":
             da = setup_dp_dalton(
                 self.input_file,
                 self.inputs("basis"),
@@ -184,14 +212,18 @@ class TimePropagator:
             )
         self.set_response_vectors(da)
 
-    def set_response_vectors(self,da=None,L1=None,L2=None,R1=None,R2=None,M1=None,M2=None):
+    def set_response_vectors(
+        self, da=None, L1=None, L2=None, R1=None, R2=None, M1=None, M2=None
+    ):
         """da : daltonproject.dalton.arrays.Arrays object"""
-        if (    (L1 is not None)
-            or  (L2 is not None)
-            or  (R1 is not None)
-            or  (R2 is not None)
-            or  (M1 is not None)
-            or  (M2 is not None)    ):
+        if (
+            (L1 is not None)
+            or (L2 is not None)
+            or (R1 is not None)
+            or (R2 is not None)
+            or (M1 is not None)
+            or (M2 is not None)
+        ):
             raise NotImplementedError
         elif da is not None:
             self.da = da
@@ -209,7 +241,10 @@ class TimePropagator:
 
         ground_state_tolerance = 1e-10
 
-        if self.correlated:
+        if self.inputs("method") == "rcis":
+            y0 = np.zeros(1 + self.QS.m * self.QS.n, dtype=np.complex128)
+            y0[0] = 1.0
+        elif self.correlated:
             if self.orbital_adaptive:
                 self.cc.compute_ground_state(
                     tol=ground_state_tolerance,
@@ -223,80 +258,81 @@ class TimePropagator:
             y0 = self.cc.get_amplitudes(get_t_0=True).asarray()
         else:
             self.cc.compute_ground_state(
-                tol=ground_state_tolerance,
-                change_system_basis=False
+                tol=ground_state_tolerance, change_system_basis=False
             )
             y0 = self.cc.C.ravel()
         self.set_initial_state(y0)
 
-    def set_initial_state(self,initial_state):
+    def set_initial_state(self, initial_state):
         if self.correlated:
             self.y0 = initial_state
         else:
-            self.C = initial_state.reshape(self.QS.l,self.QS.l).copy()
+            self.C = initial_state.reshape(self.QS.l, self.QS.l).copy()
             self.QS.change_basis(self.C)
             self.y0 = np.identity(len(self.C)).ravel()
 
     def construct_pulses(self):
-        dipole_approx = True if self.inputs('laser_approx') == 'dipole' else False
+        dipole_approx = True if self.inputs("laser_approx") == "dipole" else False
 
         Rpulses = []
         Ipulses = []
 
-        Ru = np.atleast_2d(np.zeros((self.n_pulses,3),dtype=float))
-        Iu = np.atleast_2d(np.zeros((self.n_pulses,3),dtype=float))
+        Ru = np.atleast_2d(np.zeros((self.n_pulses, 3), dtype=float))
+        Iu = np.atleast_2d(np.zeros((self.n_pulses, 3), dtype=float))
 
         c = 0
-        for pulse in self.inputs('pulses'):
+        for pulse in self.inputs("pulses"):
             inputs = self.inputs(pulse)
 
-            Ru_ = (inputs['polarization']).real
-            Iu_ = (inputs['polarization']).imag
+            Ru_ = (inputs["polarization"]).real
+            Iu_ = (inputs["polarization"]).imag
 
             Ru_is_zero = True if np.max(np.abs(Ru_)) < 1e-14 else False
             Iu_is_zero = True if np.max(np.abs(Iu_)) < 1e-14 else False
 
-            pulse_class = inputs['pulse_class']
+            pulse_class = inputs["pulse_class"]
 
             Laser = vars(lasers)[pulse_class]
 
             if (not Ru_is_zero) or (not dipole_approx):
                 Rpulse = Laser(**inputs)
             else:
-                Rpulse = lambda t:0
+                Rpulse = lambda t: 0
 
             if (not Iu_is_zero) or (not dipole_approx):
                 imag_inputs = inputs.copy()
-                if 'phase' in imag_inputs:
-                    imag_inputs['phase'] -= np.pi/2
+                if "phase" in imag_inputs:
+                    imag_inputs["phase"] -= np.pi / 2
                 else:
-                    imag_inputs['phase'] = -np.pi/2
+                    imag_inputs["phase"] = -np.pi / 2
                 Ipulse = Laser(**imag_inputs)
             else:
-                Ipulse = lambda t:0
+                Ipulse = lambda t: 0
 
             Rpulses.append(Rpulse)
             Ipulses.append(Ipulse)
 
-            Ru[c,:] = Ru_
-            Iu[c,:] = Iu_
+            Ru[c, :] = Ru_
+            Iu[c, :] = Iu_
 
             c += 1
 
-        return Rpulses,Ipulses,Ru,Iu
+        return Rpulses, Ipulses, Ru, Iu
 
     def construct_linear_dipole_operators(self):
-        dipole_operator = self.QS.position if self.inputs('gauge') == 'length' else self.QS.momentum
+        dipole_operator = (
+            self.QS.position if self.inputs("gauge") == "length" else self.QS.momentum
+        )
 
         operators = []
 
         for i in np.arange(self.n_pulses):
-            pulse_name = self.inputs('pulses')[i]
+            pulse_name = self.inputs("pulses")[i]
 
             inputs = self.inputs(pulse_name)
 
-            Ru = (inputs['polarization']).real
-            Iu = (inputs['polarization']).imag
+            Ru = (inputs["polarization"]).real
+            Iu = (inputs["polarization"]).imag
 
             Ru_is_zero = True if np.max(np.abs(Ru)) < 1e-14 else False
             Iu_is_zero = True if np.max(np.abs(Iu)) < 1e-14 else False
@@ -313,10 +349,10 @@ class TimePropagator:
 
             if not Iu_is_zero:
                 imag_inputs = inputs.copy()
-                if 'phase' in imag_inputs:
-                    imag_inputs['phase'] -= np.pi/2
+                if "phase" in imag_inputs:
+                    imag_inputs["phase"] -= np.pi / 2
                 else:
-                    imag_inputs['phase'] = -np.pi/2
+                    imag_inputs["phase"] = -np.pi / 2
                 Ipulse = self.Ipulses[i]
                 Iop = np.tensordot(
                     Iu[i],
@@ -328,25 +364,22 @@ class TimePropagator:
 
         return operators
 
-
-
-
     def construct_quadratic_dipole_operators(self):
         quadratic_dipole_operator = 0.5 * np.eye(self.QS.l)
 
         operators = []
 
         for i in np.arange(self.n_pulses):
-            pulse_name = self.inputs('pulses')[i]
+            pulse_name = self.inputs("pulses")[i]
 
             inputs = self.inputs(pulse_name)
 
-            Ru = (inputs['polarization']).real
-            Iu = (inputs['polarization']).imag
+            Ru = (inputs["polarization"]).real
+            Iu = (inputs["polarization"]).imag
 
-            RuRu = np.dot(Ru,Ru)
-            RuIu = np.dot(Ru,Iu)
-            IuIu = np.dot(Iu,Iu)
+            RuRu = np.dot(Ru, Ru)
+            RuIu = np.dot(Ru, Iu)
+            IuIu = np.dot(Iu, Iu)
 
             RuRu_is_zero = True if np.max(np.abs(RuRu)) < 1e-14 else False
             RuIu_is_zero = True if np.max(np.abs(RuIu)) < 1e-14 else False
@@ -356,15 +389,15 @@ class TimePropagator:
             Ipulse = self.Ipulses[i]
 
             if not RuRu_is_zero:
-                pulse = lambda x: RuRu*Rpulse(x) ** 2
+                pulse = lambda x: RuRu * Rpulse(x) ** 2
                 o0 = CustomOneBodyOperator(pulse, quadratic_dipole_operator)
                 operators.append(o0)
             if not RuIu_is_zero:
-                pulse = lambda x: 2*RuIu*Rpulse(x)*Ipulse(x)
+                pulse = lambda x: 2 * RuIu * Rpulse(x) * Ipulse(x)
                 o0 = CustomOneBodyOperator(pulse, quadratic_dipole_operator)
                 operators.append(o0)
             if not IuIu_is_zero:
-                pulse = lambda x: IuIu*Ipulse(x) ** 2
+                pulse = lambda x: IuIu * Ipulse(x) ** 2
                 o0 = CustomOneBodyOperator(pulse, quadratic_dipole_operator)
                 operators.append(o0)
 
@@ -378,21 +411,21 @@ class TimePropagator:
         pulse_nums = np.arange(self.n_pulses)
         for i in pulse_nums:
             for j in pulse_nums[pulse_nums > i]:
-                pulse_name_i = self.inputs('pulses')[i]
-                pulse_name_j = self.inputs('pulses')[j]
+                pulse_name_i = self.inputs("pulses")[i]
+                pulse_name_j = self.inputs("pulses")[j]
 
                 inputs_i = self.inputs(pulse_name_i)
                 inputs_j = self.inputs(pulse_name_j)
 
-                Ru_i = (inputs_i['polarization']).real
-                Iu_i = (inputs_i['polarization']).imag
-                Ru_j = (inputs_j['polarization']).real
-                Iu_j = (inputs_j['polarization']).imag
+                Ru_i = (inputs_i["polarization"]).real
+                Iu_i = (inputs_i["polarization"]).imag
+                Ru_j = (inputs_j["polarization"]).real
+                Iu_j = (inputs_j["polarization"]).imag
 
-                RuRu = np.dot(Ru_i,Ru_j)
-                RuIu = np.dot(Ru_i,Iu_j)
-                IuRu = np.dot(Iu_i,Ru_j)
-                IuIu = np.dot(Iu_i,Iu_j)
+                RuRu = np.dot(Ru_i, Ru_j)
+                RuIu = np.dot(Ru_i, Iu_j)
+                IuRu = np.dot(Iu_i, Ru_j)
+                IuIu = np.dot(Iu_i, Iu_j)
 
                 RuRu_is_zero = True if np.max(np.abs(RuRu)) < 1e-14 else False
                 RuIu_is_zero = True if np.max(np.abs(RuIu)) < 1e-14 else False
@@ -405,25 +438,23 @@ class TimePropagator:
                 Ipulse_j = self.Ipulses[j]
 
                 if not RuRu_is_zero:
-                    pulse = lambda x: RuRu*Rpulse_i(x)*Rpulse_j(x)
+                    pulse = lambda x: RuRu * Rpulse_i(x) * Rpulse_j(x)
                     o0 = CustomOneBodyOperator(pulse, cross_dipole_operator)
                     operators.append(o0)
                 if not RuIu_is_zero:
-                    pulse = lambda x: RuIu*Rpulse_i(x)*Ipulse_j(x)
+                    pulse = lambda x: RuIu * Rpulse_i(x) * Ipulse_j(x)
                     o0 = CustomOneBodyOperator(pulse, cross_dipole_operator)
                     operators.append(o0)
                 if not IuRu_is_zero:
-                    pulse = lambda x: IuRu*Ipulse_i(x)*Rpulse_j(x)
+                    pulse = lambda x: IuRu * Ipulse_i(x) * Rpulse_j(x)
                     o0 = CustomOneBodyOperator(pulse, cross_dipole_operator)
                     operators.append(o0)
                 if not IuIu_is_zero:
-                    pulse = lambda x: IuIu*Ipulse(x) ** 2
+                    pulse = lambda x: IuIu * Ipulse(x) ** 2
                     o0 = CustomOneBodyOperator(pulse, cross_dipole_operator)
                     operators.append(o0)
 
         return operators
-
-
 
     def construct_linear_plane_wave_operators(self):
         operators = []
@@ -465,26 +496,31 @@ class TimePropagator:
             g2i_g1j = pwo.quadratic_pulse(i, i, "sin", "cos")
             g2i_g2j = pwo.quadratic_pulse(i, i, "sin", "sin")
 
-            uRR = np.dot(self.Ru[i],self.Ru[i])
-            uRI = np.dot(self.Ru[i],self.Iu[i])
-            uII = np.dot(self.Iu[i],self.Iu[i])
+            uRR = np.dot(self.Ru[i], self.Ru[i])
+            uRI = np.dot(self.Ru[i], self.Iu[i])
+            uII = np.dot(self.Iu[i], self.Iu[i])
             uIR = uRI
 
-            p_cos_p = lambda x: 0.5*( uRR*(g1i_g1j(x) - g2i_g2j(x))
-                                    + uRI*(g1i_g2j(x) + g2i_g1j(x))
-                                    + uIR*(g2i_g1j(x) + g1i_g2j(x))
-                                    + uII*(g2i_g2j(x) - g1i_g1j(x)) )
+            p_cos_p = lambda x: 0.5 * (
+                uRR * (g1i_g1j(x) - g2i_g2j(x))
+                + uRI * (g1i_g2j(x) + g2i_g1j(x))
+                + uIR * (g2i_g1j(x) + g1i_g2j(x))
+                + uII * (g2i_g2j(x) - g1i_g1j(x))
+            )
 
-            p_cos_m = lambda x: 0.5*( uRR*(g1i_g1j(x) + g2i_g2j(x))
-                                    + uRI*(g1i_g2j(x) - g2i_g1j(x))
-                                    + uIR*(g2i_g1j(x) - g1i_g2j(x))
-                                    + uII*(g2i_g2j(x) + g1i_g1j(x)) )
+            p_cos_m = lambda x: 0.5 * (
+                uRR * (g1i_g1j(x) + g2i_g2j(x))
+                + uRI * (g1i_g2j(x) - g2i_g1j(x))
+                + uIR * (g2i_g1j(x) - g1i_g2j(x))
+                + uII * (g2i_g2j(x) + g1i_g1j(x))
+            )
 
-            p_sin_p = lambda x: 0.5*( uRR*(g1i_g2j(x) + g2i_g1j(x))
-                                    + uRI*(g2i_g2j(x) - g1i_g1j(x))
-                                    + uIR*(g2i_g2j(x) - g1i_g1j(x))
-                                    + uII*(g2i_g1j(x) + g1i_g2j(x)) )
-
+            p_sin_p = lambda x: 0.5 * (
+                uRR * (g1i_g2j(x) + g2i_g1j(x))
+                + uRI * (g2i_g2j(x) - g1i_g1j(x))
+                + uIR * (g2i_g2j(x) - g1i_g1j(x))
+                + uII * (g2i_g1j(x) + g1i_g2j(x))
+            )
 
             o0 = CustomOneBodyOperator(
                 p_cos_p,
@@ -517,31 +553,38 @@ class TimePropagator:
                 g2i_g1j = pwo.quadratic_pulse(i, j, "sin", "cos")
                 g2i_g2j = pwo.quadratic_pulse(i, j, "sin", "sin")
 
-                uRR = np.dot(self.Ru[i],self.Ru[j])
-                uRI = np.dot(self.Ru[i],self.Iu[j])
-                uII = np.dot(self.Iu[i],self.Iu[j])
+                uRR = np.dot(self.Ru[i], self.Ru[j])
+                uRI = np.dot(self.Ru[i], self.Iu[j])
+                uII = np.dot(self.Iu[i], self.Iu[j])
                 uIR = uRI
 
-                p_cos_p = lambda x: 0.5*( uRR*(g1i_g1j(x) - g2i_g2j(x))
-                                        + uRI*(g1i_g2j(x) + g2i_g1j(x))
-                                        + uIR*(g2i_g1j(x) + g1i_g2j(x))
-                                        + uII*(g2i_g2j(x) - g1i_g1j(x)) )
+                p_cos_p = lambda x: 0.5 * (
+                    uRR * (g1i_g1j(x) - g2i_g2j(x))
+                    + uRI * (g1i_g2j(x) + g2i_g1j(x))
+                    + uIR * (g2i_g1j(x) + g1i_g2j(x))
+                    + uII * (g2i_g2j(x) - g1i_g1j(x))
+                )
 
-                p_cos_m = lambda x: 0.5*( uRR*(g1i_g1j(x) + g2i_g2j(x))
-                                        + uRI*(g1i_g2j(x) - g2i_g1j(x))
-                                        + uIR*(g2i_g1j(x) - g1i_g2j(x))
-                                        + uII*(g2i_g2j(x) + g1i_g1j(x)) )
+                p_cos_m = lambda x: 0.5 * (
+                    uRR * (g1i_g1j(x) + g2i_g2j(x))
+                    + uRI * (g1i_g2j(x) - g2i_g1j(x))
+                    + uIR * (g2i_g1j(x) - g1i_g2j(x))
+                    + uII * (g2i_g2j(x) + g1i_g1j(x))
+                )
 
-                p_sin_p = lambda x: 0.5*( uRR*(g1i_g2j(x) + g2i_g1j(x))
-                                        + uRI*(g2i_g2j(x) - g1i_g1j(x))
-                                        + uIR*(g2i_g2j(x) - g1i_g1j(x))
-                                        + uII*(g2i_g1j(x) + g1i_g2j(x)) )
+                p_sin_p = lambda x: 0.5 * (
+                    uRR * (g1i_g2j(x) + g2i_g1j(x))
+                    + uRI * (g2i_g2j(x) - g1i_g1j(x))
+                    + uIR * (g2i_g2j(x) - g1i_g1j(x))
+                    + uII * (g2i_g1j(x) + g1i_g2j(x))
+                )
 
-                p_sin_m = lambda x: 0.5*( uRR*(g2i_g1j(x) - g1i_g2j(x))
-                                        + uRI*(g2i_g2j(x) + g1i_g1j(x))
-                                        + uIR*(g2i_g2j(x) + g1i_g1j(x))
-                                        + uII*(g2i_g1j(x) - g1i_g2j(x)) )
-
+                p_sin_m = lambda x: 0.5 * (
+                    uRR * (g2i_g1j(x) - g1i_g2j(x))
+                    + uRI * (g2i_g2j(x) + g1i_g1j(x))
+                    + uIR * (g2i_g2j(x) + g1i_g1j(x))
+                    + uII * (g2i_g1j(x) - g1i_g2j(x))
+                )
 
                 o0 = CustomOneBodyOperator(
                     p_cos_p,
@@ -576,14 +619,12 @@ class TimePropagator:
         dt = inputs("dt")
         init_time = inputs("initial_time")
 
-        self.n_pulses = len(self.inputs('pulses'))
+        self.n_pulses = len(self.inputs("pulses"))
 
+        total_time = self.inputs("final_time") - self.inputs("initial_time")
+        self.num_steps = int(total_time / self.inputs("dt")) + 1
 
-        total_time = self.inputs('final_time') - self.inputs('initial_time')
-        self.num_steps = int(total_time / self.inputs('dt')) + 1
-
-
-        self.Rpulses,self.Ipulses,self.Ru,self.Iu = self.construct_pulses()
+        self.Rpulses, self.Ipulses, self.Ru, self.Iu = self.construct_pulses()
 
         if self.inputs("laser_approx") == "dipole":
             operators = self.construct_linear_dipole_operators()
@@ -594,27 +635,20 @@ class TimePropagator:
                 if self.inputs("cross_terms"):
                     operators += self.construct_cross_dipole_operators()
 
-
         if self.inputs("laser_approx") == "plane_wave" or self.inputs(
             "sample_general_response"
         ):
             compute_A = True if (inputs("sample_kinetic_momentum") == True) else False
 
-            ##should be fixed, always use self.C
-            if (self.correlated and hasattr(self,'da')):
-                C = self.da.c.T
-            else:
-                C = self.C
-
             pwo = PlaneWaveOperators(
-                C,
-                self.inputs('molecule'),
+                self.C,
+                self.inputs("molecule"),
                 self.inputs("basis"),
                 self.Rpulses,
                 self.Ipulses,
                 self.QS.l,
                 custom_basis=self.inputs("custom_basis"),
-                change_basis=True
+                change_basis=True,
             )
             pwo.construct_operators(
                 inputs,
@@ -632,22 +666,22 @@ class TimePropagator:
 
         self.QS.set_time_evolution_operator(operators)
 
-    def build_integrator(
-        self, integrator=None, **integrator_params
-    ):
+    def build_integrator(self, integrator=None, **integrator_params):
 
         self.tdcc = self.TDCC(self.QS)
 
         if integrator is not None:
-            self.inputs.set('integrator', integrator)
-        integrator = self.inputs('integrator')
+            self.inputs.set("integrator", integrator)
+        integrator = self.inputs("integrator")
 
-        if (len(integrator_params) > 0) or (not self.inputs.has_key('integrator_params')):
-            self.inputs.set('integrator_params', integrator_params)
-        integrator_params = self.inputs('integrator_params')
+        if (len(integrator_params) > 0) or (
+            not self.inputs.has_key("integrator_params")
+        ):
+            self.inputs.set("integrator_params", integrator_params)
+        integrator_params = self.inputs("integrator_params")
 
         self.r = complex_ode(self.tdcc).set_integrator(integrator, **integrator_params)
-        self.r.set_initial_value(self.y0, self.inputs('initial_time'))
+        self.r.set_initial_value(self.y0, self.inputs("initial_time"))
 
     def time_transformed_operator(self, a):
         """get time-transformed operator"""
@@ -655,7 +689,9 @@ class TimePropagator:
             return a
         else:
             if self.correlated:
-                t_amps, l_amps, C, C_tilde = self.tdcc._amp_template.from_array(self.r.y)
+                t_amps, l_amps, C, C_tilde = self.tdcc._amp_template.from_array(
+                    self.r.y
+                )
                 return C_tilde @ a @ C
             else:
                 C = self.r.y.reshape(self.QS.l, self.QS.l)
@@ -668,18 +704,22 @@ class TimePropagator:
 
         if self.orbital_adaptive:
             if self.correlated:
-                t_amps, l_amps, C, C_tilde = self.tdcc._amp_template.from_array(self.r.y)
+                t_amps, l_amps, C, C_tilde = self.tdcc._amp_template.from_array(
+                    self.r.y
+                )
             else:
                 C = self.r.y.reshape(self.QS.l, self.QS.l)
                 C_tilde = C.conj()
         else:
             C = C_tilde = None
 
-        #F00,m and F01,m
+        # F00,m and F01,m
         for m in np.arange(self.n_pulses):
             # cos (i=1)
             # NOTE: the linear_operator is already contracted with the polarization vector
-            Z00_l = -1j * (self.pwo.linear_operator(m, "cos", "real", C=C, C_tilde=C_tilde))
+            Z00_l = -1j * (
+                self.pwo.linear_operator(m, "cos", "real", C=C, C_tilde=C_tilde)
+            )
 
             Z00_q = 0
             for n in np.arange(self.n_pulses):
@@ -687,7 +727,9 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        + self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(
+                            n, m, "cos+", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "cos")(t)
                 )
@@ -695,7 +737,9 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        + self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(
+                            n, m, "sin-", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "sin")(t)
                 )
@@ -703,7 +747,9 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        + self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(
+                            n, m, "sin-", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "cos")(t)
                 )
@@ -711,42 +757,43 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        + self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        + self.pwo.quadratic_operator(
+                            n, m, "cos+", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "sin")(t)
                 )
 
-                Z00_q += (
-                    -1j
-                    *(np.dot(self.Ru[m], self.Ru[n])* Z00_q00
-                    + np.dot(self.Ru[m], self.Ru[n])* Z00_q11
-                    + np.dot(self.Ru[m], self.Iu[n])* Z00_q10
-                    + np.dot(self.Ru[m], self.Iu[n])* Z00_q01
-                    )
+                Z00_q += -1j * (
+                    np.dot(self.Ru[m], self.Ru[n]) * Z00_q00
+                    + np.dot(self.Ru[m], self.Ru[n]) * Z00_q11
+                    + np.dot(self.Ru[m], self.Iu[n]) * Z00_q10
+                    + np.dot(self.Ru[m], self.Iu[n]) * Z00_q01
                 )
 
             Z00 = Z00_l + Z00_q
             F[0, 0, m] = np.einsum("qp,pq ->", rho_qp, Z00)
 
-            Z01_l = -1j * (self.pwo.linear_operator(m, "cos", "imag", C=C, C_tilde=C_tilde))
+            Z01_l = -1j * (
+                self.pwo.linear_operator(m, "cos", "imag", C=C, C_tilde=C_tilde)
+            )
             Z01_q = 0
 
-            Z01_q += (
-                -1j
-                *(np.dot(self.Iu[m], self.Ru[n])* Z00_q00
-                + np.dot(self.Iu[m], self.Ru[n])* Z00_q11
-                + np.dot(self.Iu[m], self.Iu[n])* Z00_q10
-                + np.dot(self.Iu[m], self.Iu[n])* Z00_q01
-                )
+            Z01_q += -1j * (
+                np.dot(self.Iu[m], self.Ru[n]) * Z00_q00
+                + np.dot(self.Iu[m], self.Ru[n]) * Z00_q11
+                + np.dot(self.Iu[m], self.Iu[n]) * Z00_q10
+                + np.dot(self.Iu[m], self.Iu[n]) * Z00_q01
             )
 
             Z01 = Z01_l + Z01_q
             F[0, 1, m] = np.einsum("qp,pq ->", rho_qp, Z01)
 
-        #F11,m and F10,m
-        for m in np.arange(self.n_pulses):
+            # F11,m and F10,m
             # sin (i=2)
-            Z11_l = -1j * (self.pwo.linear_operator(m, "sin", "real", C=C, C_tilde=C_tilde))
+            Z11_l = -1j * (
+                self.pwo.linear_operator(m, "sin", "real", C=C, C_tilde=C_tilde)
+            )
 
             Z11_q = 0
             for n in np.arange(self.n_pulses):
@@ -754,7 +801,9 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        - self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(
+                            n, m, "sin-", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "cos")(t)
                 )
@@ -762,7 +811,9 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        - self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(
+                            n, m, "cos+", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "sin")(t)
                 )
@@ -770,7 +821,9 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "cos-", C=C, C_tilde=C_tilde)
-                        - self.pwo.quadratic_operator(n, m, "cos+", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(
+                            n, m, "cos+", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "cos")(t)
                 )
@@ -778,34 +831,33 @@ class TimePropagator:
                     0.5
                     * (
                         self.pwo.quadratic_operator(n, m, "sin+", C=C, C_tilde=C_tilde)
-                        - self.pwo.quadratic_operator(n, m, "sin-", C=C, C_tilde=C_tilde)
+                        - self.pwo.quadratic_operator(
+                            n, m, "sin-", C=C, C_tilde=C_tilde
+                        )
                     )
                     * self.pwo.linear_pulse(n, "sin")(t)
                 )
 
-
-                Z11_q += (
-                    -1j
-                    *(np.dot(self.Ru[m], self.Ru[n])* Z00_q00
-                    + np.dot(self.Ru[m], self.Ru[n])* Z00_q11
-                    + np.dot(self.Ru[m], self.Iu[n])* Z00_q10
-                    + np.dot(self.Ru[m], self.Iu[n])* Z00_q01
-                    )
+                Z11_q += -1j * (
+                    np.dot(self.Ru[m], self.Ru[n]) * Z00_q00
+                    + np.dot(self.Ru[m], self.Ru[n]) * Z00_q11
+                    + np.dot(self.Ru[m], self.Iu[n]) * Z00_q10
+                    + np.dot(self.Ru[m], self.Iu[n]) * Z00_q01
                 )
 
             Z11 = Z11_l + Z11_q
             F[1, 1, m] = np.einsum("qp,pq ->", rho_qp, Z11)
 
-            Z10_l = -1j * (self.pwo.linear_operator(m, "sin", "imag", C=C, C_tilde=C_tilde))
+            Z10_l = -1j * (
+                self.pwo.linear_operator(m, "sin", "imag", C=C, C_tilde=C_tilde)
+            )
             Z10_q = 0
 
-            Z10_q += (
-                -1j
-                *(np.dot(self.Iu[m], self.Ru[n])* Z11_q00
-                + np.dot(self.Iu[m], self.Ru[n])* Z11_q11
-                + np.dot(self.Iu[m], self.Iu[n])* Z11_q10
-                + np.dot(self.Iu[m], self.Iu[n])* Z11_q01
-                )
+            Z10_q += -1j * (
+                np.dot(self.Iu[m], self.Ru[n]) * Z11_q00
+                + np.dot(self.Iu[m], self.Ru[n]) * Z11_q11
+                + np.dot(self.Iu[m], self.Iu[n]) * Z11_q10
+                + np.dot(self.Iu[m], self.Iu[n]) * Z11_q01
             )
 
             Z10 = Z10_l + Z10_q
@@ -826,35 +878,39 @@ class TimePropagator:
         return F
 
     def compute_dipole_vector_potential(self):
-        A = np.zeros((3,self.QS.l,self.QS.l),dtype=np.complex128)
+        A = np.zeros((3, self.QS.l, self.QS.l), dtype=np.complex128)
 
         for i in np.arange(3):
-            A[i,:,:] = np.eye(self.QS.l)
+            A[i, :, :] = np.eye(self.QS.l)
 
         pulse = np.zeros(3)
         for i in np.arange(self.n_pulses):
-            pulse += self.Ru[i,:]*self.Rpulses[i](self.r.t)+self.Iu[i,:]*self.Ipulses[i](self.r.t)
+            pulse += self.Ru[i, :] * self.Rpulses[i](self.r.t) + self.Iu[
+                i, :
+            ] * self.Ipulses[i](self.r.t)
 
         for i in np.arange(3):
-            A[i,:,:] *= pulse[i]
+            A[i, :, :] *= pulse[i]
 
         return A
 
     def compute_plane_wave_vector_potential(self):
-        A = np.zeros((3,self.QS.l,self.QS.l),dtype=np.complex128)
+        A = np.zeros((3, self.QS.l, self.QS.l), dtype=np.complex128)
         for i in np.arange(self.n_pulses):
             for j in np.arange(3):
-                A[j] += (self.Ru[i,j]* (
-                    self.pwo.A_operator(i,"cos")*self.pwo.linear_pulse(i,"cos")(self.r.t)
-                +   self.pwo.A_operator(i,"sin")*self.pwo.linear_pulse(i,"sin")(self.r.t) )
+                A[j] += self.Ru[i, j] * (
+                    self.pwo.A_operator(i, "cos")
+                    * self.pwo.linear_pulse(i, "cos")(self.r.t)
+                    + self.pwo.A_operator(i, "sin")
+                    * self.pwo.linear_pulse(i, "sin")(self.r.t)
                 )
-                A[j] += (self.Iu[i,j]* (
-                    self.pwo.A_operator(i,"cos")*self.pwo.linear_pulse(i,"sin")(self.r.t)
-                -   self.pwo.A_operator(i,"sin")*self.pwo.linear_pulse(i,"cos")(self.r.t) )
+                A[j] += self.Iu[i, j] * (
+                    self.pwo.A_operator(i, "cos")
+                    * self.pwo.linear_pulse(i, "sin")(self.r.t)
+                    - self.pwo.A_operator(i, "sin")
+                    * self.pwo.linear_pulse(i, "cos")(self.r.t)
                 )
         return A
-
-
 
         pi += (
             self.pwo.linear_pulse(k, "cos")(time_points[i + 1])
@@ -992,15 +1048,14 @@ class TimePropagator:
         else:
             f0 = final_step
 
-        if self.inputs('verbose'):
+        if self.inputs("verbose"):
             print("Total number of simulation iterations: ", len(time_points))
             print("Initial step: ", i0)
             print("Final step: ", f0)
             print("Total number of run iterations: ", f0 - i0)
 
-
         for i_, _t in tqdm.tqdm(enumerate(time_points[i0:f0])):
-            self.r.integrate(self.r.t + self.inputs('dt'))
+            self.r.integrate(self.r.t + self.inputs("dt"))
             if not self.r.successful():
                 break
 
@@ -1008,7 +1063,6 @@ class TimePropagator:
             #    print (f'{i} / {self.num_steps}')
 
             self.samples["time_points"][i + 1] = self.r.t
-
 
             # ENERGY
             if self.inputs("sample_energy"):
@@ -1039,7 +1093,7 @@ class TimePropagator:
             # KINETIC MOMENTUM
             if self.inputs("sample_kinetic_momentum"):
                 pi = self.QS.momentum.copy()
-                if self.inputs("gauge") == 'velocity':
+                if self.inputs("gauge") == "velocity":
                     if self.inputs("laser_approx") == "dipole":
                         A = self.compute_dipole_vector_potential()
                     else:
@@ -1063,7 +1117,9 @@ class TimePropagator:
                     )
 
             # SPECTRAL RESPONSE
-            if self.inputs("sample_dipole_response") or self.inputs("sample_general_response"):
+            if self.inputs("sample_dipole_response") or self.inputs(
+                "sample_general_response"
+            ):
                 rho_qp = self.tdcc.compute_one_body_density_matrix(self.r.t, self.r.y)
                 if (
                     self.inputs("sample_dipole_response")
@@ -1073,9 +1129,9 @@ class TimePropagator:
                         self.r.t, rho_qp
                     )
                 if self.inputs("sample_general_response"):
-                    self.samples["general_response"][i + 1, :, :, :] = self.compute_F_vpi(
-                        self.r.t, rho_qp
-                    )
+                    self.samples["general_response"][
+                        i + 1, :, :, :
+                    ] = self.compute_F_vpi(self.r.t, rho_qp)
 
             if compute_projectors or self.inputs("sample_auto_correlation"):
                 t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
@@ -1186,6 +1242,3 @@ class TimePropagator:
             self.samples["old_t"] = self.r.t
 
         return self.samples
-
-
-
