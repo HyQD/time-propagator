@@ -912,21 +912,15 @@ class TimePropagator:
                 )
         return A
 
-        pi += (
-            self.pwo.linear_pulse(k, "cos")(time_points[i + 1])
-            * self.pwo.A_operator(k, "cos")
-            + self.pwo.linear_pulse(k, "sin")(time_points[i + 1])
-            * self.pwo.A_operator(k, "sin")
-        ) * self.Ru[k][j]
-        return 0
-
     def setup_samples(self, samples=None):
         if samples is None:
             samples = {}
             # samples['time_points'] = np.linspace(0, self.tfinal, self.num_steps)
             samples["time_points"] = np.zeros(self.num_steps)
             samples["laser_pulse"] = (
-                np.zeros(self.num_steps) if self.inputs("sample_laser_pulse") else None
+                np.zeros((self.num_steps, 3))
+                if self.inputs("sample_laser_pulse")
+                else None
             )
             samples["dipole_moment"] = (
                 np.zeros((self.num_steps, 3), dtype=np.complex128)
@@ -1043,10 +1037,7 @@ class TimePropagator:
 
         self.samples["time_points"][i0] = self.r.t
 
-        if final_step is None:
-            f0 = self.num_steps - 1
-        else:
-            f0 = final_step
+        f0 = final_step
 
         if self.inputs("verbose"):
             print("Total number of simulation iterations: ", len(time_points))
@@ -1054,28 +1045,22 @@ class TimePropagator:
             print("Final step: ", f0)
             print("Total number of run iterations: ", f0 - i0)
 
-        for i_, _t in tqdm.tqdm(enumerate(time_points[i0:f0])):
-            self.r.integrate(self.r.t + self.inputs("dt"))
-            if not self.r.successful():
-                break
-
+        for i_, _t in tqdm.tqdm(enumerate(time_points[i0 : f0 + 1])):
             # if i%10 == 0:
             #    print (f'{i} / {self.num_steps}')
 
-            self.samples["time_points"][i + 1] = self.r.t
+            self.samples["time_points"][i] = self.r.t
 
             # ENERGY
             if self.inputs("sample_energy"):
-                self.samples["energy"][i + 1] = self.tdcc.compute_energy(
-                    self.r.t, self.r.y
-                )
+                self.samples["energy"][i] = self.tdcc.compute_energy(self.r.t, self.r.y)
 
             # DIPOLE MOMENT
             if self.inputs("sample_dipole_moment"):
                 for j in range(3):
                     x = self.QS.dipole_moment[j].copy()
                     self.samples["dipole_moment"][
-                        i + 1, j
+                        i, j
                     ] = self.tdcc.compute_one_body_expectation_value(
                         self.r.t, self.r.y, x
                     )
@@ -1085,7 +1070,7 @@ class TimePropagator:
                 for j in range(3):
                     p = self.QS.momentum[j].copy()
                     self.samples["momentum"][
-                        i + 1, j
+                        i, j
                     ] = self.tdcc.compute_one_body_expectation_value(
                         self.r.t, self.r.y, p
                     )
@@ -1101,7 +1086,7 @@ class TimePropagator:
                     pi += A
                 for j in range(3):
                     self.samples["kinetic_momentum"][
-                        i + 1, j
+                        i, j
                     ] = self.tdcc.compute_one_body_expectation_value(
                         self.r.t, self.r.y, pi[j]
                     )
@@ -1111,7 +1096,7 @@ class TimePropagator:
                 for j in range(6):
                     r2 = self.r2[j].copy()
                     self.samples["quadrupole_moment"][
-                        i + 1, j
+                        i, j
                     ] = self.tdcc.compute_one_body_expectation_value(
                         self.r.t, self.r.y, r2
                     )
@@ -1125,13 +1110,13 @@ class TimePropagator:
                     self.inputs("sample_dipole_response")
                     and self.inputs("laser_approx") == "dipole"
                 ):
-                    self.samples["dipole_response"][i + 1, 0, :] = self.compute_F(
+                    self.samples["dipole_response"][i, 0, :] = self.compute_F(
                         self.r.t, rho_qp
                     )
                 if self.inputs("sample_general_response"):
-                    self.samples["general_response"][
-                        i + 1, :, :, :
-                    ] = self.compute_F_vpi(self.r.t, rho_qp)
+                    self.samples["general_response"][i, :, :, :] = self.compute_F_vpi(
+                        self.r.t, rho_qp
+                    )
 
             if compute_projectors or self.inputs("sample_auto_correlation"):
                 t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
@@ -1139,7 +1124,7 @@ class TimePropagator:
 
             # AUTO CORRELATION
             if self.inputs("sample_auto_correlation"):
-                self.samples["auto_correlation"][i + 1] = self.tdcc.compute_overlap(
+                self.samples["auto_correlation"][i] = self.tdcc.compute_overlap(
                     self.r.t, self.y0, self.r.y
                 )
 
@@ -1160,7 +1145,7 @@ class TimePropagator:
 
                     if self.inputs("sample_EOM_projectors"):
                         self.samples["EOM_projectors"][
-                            i + 1, n
+                            i, n
                         ] = conventional_EOM_projector(
                             L1n,
                             L2n,
@@ -1178,7 +1163,7 @@ class TimePropagator:
 
                     if self.inputs("sample_EOM2_projectors"):
                         self.samples["EOM2_projectors"][
-                            i + 1, n
+                            i, n
                         ] = two_component_EOM_projector(
                             L1n,
                             L2n,
@@ -1208,7 +1193,7 @@ class TimePropagator:
                             M1n, M2n = M1n[0], M2n[0]
                         else:
                             M1n, M2n = M1[n], M2[n]
-                        self.samples["LR_projectors"][i + 1, n] = LR_projector(
+                        self.samples["LR_projectors"][i, n] = LR_projector(
                             M1n,
                             M2n,
                             L1n,
@@ -1226,14 +1211,36 @@ class TimePropagator:
                             R1n,
                             R2n,
                         )
+
+            self.r.integrate(self.r.t + self.inputs("dt"))
+            if not self.r.successful():
+                break
+
             i += 1
 
         if self.inputs("sample_laser_pulse"):
-            if self.inputs("laser_approx") == "dipole":
-                self.samples["laser_pulse"] = self.pulse(self.samples["time_points"])
-            else:
-                print(
-                    'WARNING: Laser pulse can only be stored if laser_approx is "dipole"'
+            Ru = self.Ru
+            Iu = self.Iu
+            Rpulses = self.Rpulses
+            Ipulses = self.Ipulses
+            for i in np.arange(self.n_pulses):
+                self.samples["laser_pulse"][:, 0] += Ru[i, 0] * Rpulses[i](
+                    self.samples["time_points"]
+                )
+                self.samples["laser_pulse"][:, 0] += Iu[i, 0] * Ipulses[i](
+                    self.samples["time_points"]
+                )
+                self.samples["laser_pulse"][:, 1] += Ru[i, 1] * Rpulses[i](
+                    self.samples["time_points"]
+                )
+                self.samples["laser_pulse"][:, 1] += Iu[i, 1] * Ipulses[i](
+                    self.samples["time_points"]
+                )
+                self.samples["laser_pulse"][:, 2] += Ru[i, 2] * Rpulses[i](
+                    self.samples["time_points"]
+                )
+                self.samples["laser_pulse"][:, 2] += Iu[i, 2] * Ipulses[i](
+                    self.samples["time_points"]
                 )
 
         if self.inputs("return_final_state") or (f0 < self.num_steps - 1):
