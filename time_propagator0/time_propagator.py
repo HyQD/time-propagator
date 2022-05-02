@@ -65,6 +65,13 @@ class TimePropagator:
             "ccsd",
             "omp2",
             "oaccd",
+            "cis",
+            "cid",
+            "cisd",
+            "cidt",
+            "cisdt",
+            "cidtq",
+            "cisdtq",
         ]
         orb_adapt_methods = ["romp2", "roaccd", "omp2", "oaccd", "rhf"]
         restricted_methods = ["rcc2", "rccsd", "romp2", "roaccd", "rhf", "rcis"]
@@ -87,6 +94,13 @@ class TimePropagator:
             "ccsd",
             "omp2",
             "oaccd",
+            "cis",
+            "cid",
+            "cisd",
+            "cidt",
+            "cisdt",
+            "cidtq",
+            "cisdtq",
         ]
 
         s = r"Computational method is not supported"
@@ -125,6 +139,27 @@ class TimePropagator:
         elif method == "oaccd":
             from coupled_cluster.oaccd import OACCD as CC
             from coupled_cluster.oaccd import TDOACCD as TDCC
+        elif method == "cis":
+            from configuration_interaction import CIS as CC
+            from configuration_interaction import TDCIS as TDCC
+        elif method == "cid":
+            from configuration_interaction import CID as CC
+            from configuration_interaction import TDCID as TDCC
+        elif method == "cisd":
+            from configuration_interaction import CISD as CC
+            from configuration_interaction import TDCISD as TDCC
+        elif method == "cidt":
+            from configuration_interaction import CIDT as CC
+            from configuration_interaction import TDCIDT as TDCC
+        elif method == "cisdt":
+            from configuration_interaction import CISDT as CC
+            from configuration_interaction import TDCISDT as TDCC
+        elif method == "cidtq":
+            from configuration_interaction import CIDTQ as CC
+            from configuration_interaction import TDCIDTQ as TDCC
+        elif method == "cisdtq":
+            from configuration_interaction import CISDTQ as CC
+            from configuration_interaction import TDCISDTQ as TDCC
 
         self.CC = CC
         self.TDCC = TDCC
@@ -244,6 +279,11 @@ class TimePropagator:
         if self.inputs("method") == "rcis":
             y0 = np.zeros(1 + self.QS.m * self.QS.n, dtype=np.complex128)
             y0[0] = 1.0
+        elif self.inputs("method")[:2] == "ci":
+            self.cc.compute_ground_state(k=1)
+            print(self.cc.C)
+            print(self.cc.C.shape)
+            y0 = self.cc.C[:, 0]
         elif self.correlated:
             if self.orbital_adaptive:
                 self.cc.compute_ground_state(
