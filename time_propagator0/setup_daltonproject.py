@@ -1,4 +1,3 @@
-import daltonproject as dp
 import numpy as np
 import os
 
@@ -11,26 +10,18 @@ from quantum_systems import (
 
 
 from qcelemental import PhysicalConstantsContext
-constants = PhysicalConstantsContext('CODATA2018')
+
+constants = PhysicalConstantsContext("CODATA2018")
 
 
-import warnings
-
-from quantum_systems import (
-    BasisSet,
-    SpatialOrbitalSystem,
-    GeneralOrbitalSystem,
-    QuantumSystem,
-)
-
-
-
-
-def construct_dalton_system(molecule,basis,charge,change_basis=False,custom_basis=False):
+def construct_dalton_system(
+    molecule, basis, charge, change_basis=False, custom_basis=False
+):
     """sets up a QuantumSystem object with arrays computed from a
     daltonproject.dalton.arrays.Arrays object.
     c: custom HF coefficient matrix"""
-    from utils import symbols2nelectrons
+    import daltonproject as dp
+    from time_propagator0.utils import symbols2nelectrons
 
     mol = dp.Molecule(input_file=molecule)
     mol.charge = charge
@@ -39,21 +30,20 @@ def construct_dalton_system(molecule,basis,charge,change_basis=False,custom_basi
     n_electrons = n_electrons_neutral - charge
 
     if not custom_basis:
-        basis_set = dp.Basis(basis=basis,custom_basis=custom_basis)
+        basis_set = dp.Basis(basis=basis, custom_basis=custom_basis)
     else:
-        basis_set = dp.Basis(basis=basis+'.dalinp',custom_basis=custom_basis)
+        basis_set = dp.Basis(basis=basis + ".dalinp", custom_basis=custom_basis)
 
-
-    ccsd = dp.QCMethod('CC2')
+    ccsd = dp.QCMethod("CC2")
     prop = dp.Property(response_vectors=True)
     prop.excitation_energies(states=0)
-    result = dp.dalton.compute(mol,basis_set,ccsd,prop)
+    result = dp.dalton.compute(mol, basis_set, ccsd, prop)
 
     da = dp.dalton.Arrays(result)
 
     h = da.h
     s = da.s
-    u = da.u            #slow implementation
+    u = da.u  # slow implementation
     c = da.c.T
 
     x = da.position(0)
@@ -67,7 +57,7 @@ def construct_dalton_system(molecule,basis,charge,change_basis=False,custom_basi
     l = len(h)
 
     position = np.zeros((3, l, l))
-    momentum = np.zeros((3, l, l),dtype=complex)
+    momentum = np.zeros((3, l, l), dtype=complex)
 
     position[0] = x
     position[1] = y
@@ -89,10 +79,18 @@ def construct_dalton_system(molecule,basis,charge,change_basis=False,custom_basi
     if change_basis:
         system.change_basis(c)
 
-    return system
+    return system, c
 
 
-def setup_dp_dalton(input_file,basis_name,n_excited_states,n_electrons,method='CCSD',custom_basis=False):
+def setup_dp_dalton(
+    input_file,
+    basis_name,
+    n_excited_states,
+    n_electrons,
+    method="CCSD",
+    custom_basis=False,
+):
+    import daltonproject as dp
     from utils import symbols2nelectrons
 
     molecule = dp.Molecule(input_file=input_file)
@@ -101,47 +99,51 @@ def setup_dp_dalton(input_file,basis_name,n_excited_states,n_electrons,method='C
     molecule.charge = charge
 
     if not custom_basis:
-        basis = dp.Basis(basis=basis_name,custom_basis=custom_basis)
+        basis = dp.Basis(basis=basis_name, custom_basis=custom_basis)
     else:
-        basis = dp.Basis(basis=basis_name+'.dalinp',custom_basis=custom_basis)
-
+        basis = dp.Basis(basis=basis_name + ".dalinp", custom_basis=custom_basis)
 
     ccsd = dp.QCMethod(method)
     prop = dp.Property(response_vectors=True)
     prop.excitation_energies(states=n_excited_states)
-    result = dp.dalton.compute(molecule,basis,ccsd,prop)
+    result = dp.dalton.compute(molecule, basis, ccsd, prop)
 
     return dp.dalton.Arrays(result)
 
-def setup_dp_molcas(input_file,basis_name,omega,k,custom_basis=False,verbose=False):
-    speed_of_light = constants.get('c_au')
-    wavelength = 2*np.pi*speed_of_light/omega
+
+def setup_dp_molcas(
+    input_file, basis_name, omega, k, custom_basis=False, verbose=False
+):
+    import daltonproject as dp
+
+    speed_of_light = constants.get("c_au")
+    wavelength = 2 * np.pi * speed_of_light / omega
 
     if verbose:
-        print ('wavelength: ',wavelength)
+        print("wavelength: ", wavelength)
 
     molecule = dp.Molecule(input_file=input_file)
     if not custom_basis:
-        basis = dp.Basis(basis=basis_name,custom_basis=custom_basis)
+        basis = dp.Basis(basis=basis_name, custom_basis=custom_basis)
     else:
-        basis = dp.Basis(basis=basis_name+'.molinp',custom_basis=custom_basis)
+        basis = dp.Basis(basis=basis_name + ".molinp", custom_basis=custom_basis)
 
-
-    ccsd = dp.QCMethod('CCSD')
+    ccsd = dp.QCMethod("CCSD")
     prop = dp.Property(vector_potential=True)
-    prop.vector_potential(k_direction=list(k),wavelength=wavelength)
+    prop.vector_potential(k_direction=list(k), wavelength=wavelength)
 
-    result = dp.molcas.compute(molecule,basis,ccsd,prop)
+    result = dp.molcas.compute(molecule, basis, ccsd, prop)
 
     return dp.molcas.Arrays(result)
 
-def setup_system_da(da,n_electrons,c=None,change_basis=False):
+
+def setup_system_da(da, n_electrons, c=None, change_basis=False):
     """sets up a QuantumSystem object with arrays computed from a
     daltonproject.dalton.arrays.Arrays object.
     c: custom HF coefficient matrix"""
     h = da.h
     s = da.s
-    u = da.u            #slow implementation
+    u = da.u  # slow implementation
     if c == None:
         c = da.c.T
 
@@ -156,7 +158,7 @@ def setup_system_da(da,n_electrons,c=None,change_basis=False):
     l = len(h)
 
     position = np.zeros((3, l, l))
-    momentum = np.zeros((3, l, l),dtype=complex)
+    momentum = np.zeros((3, l, l), dtype=complex)
 
     position[0] = x
     position[1] = y
@@ -181,38 +183,59 @@ def setup_system_da(da,n_electrons,c=None,change_basis=False):
     return system
 
 
-
 def get_amps(da):
-    amps = np.zeros(1,dtype='complex128')
-    amps = np.concatenate((amps,da.t1.flatten()))
-    amps = np.concatenate((amps,da.t2.flatten()))
-    amps = np.concatenate((amps,da.l1.flatten()))
-    amps = np.concatenate((amps,da.l2.flatten()))
+    amps = np.zeros(1, dtype="complex128")
+    amps = np.concatenate((amps, da.t1.flatten()))
+    amps = np.concatenate((amps, da.t2.flatten()))
+    amps = np.concatenate((amps, da.l1.flatten()))
+    amps = np.concatenate((amps, da.l2.flatten()))
     return amps
 
 
-def get_response_vectors(da,nr_of_excited_states,excitation_levels=None,M1=True,M2=True,L1=True,L2=True,R1=True,R2=True):
+def get_response_vectors(
+    da,
+    nr_of_excited_states,
+    excitation_levels=None,
+    M1=True,
+    M2=True,
+    L1=True,
+    L2=True,
+    R1=True,
+    R2=True,
+):
     M1_, M2_, L1_, L2_, R1_, R2_ = [], [], [], [], [], []
 
     if excitation_levels is None:
-        levels = np.arange(1,nr_of_excited_states+1)
+        levels = np.arange(1, nr_of_excited_states + 1)
     else:
         levels = excitation_levels
 
     for n in levels:
-        if M1:M1_.append(da.M1(n))
-        if M2:M2_.append(da.M2(n))
-        if L1:L1_.append(da.L1(n))
-        if L2:L2_.append(da.L2(n))
-        if R1:R1_.append(da.R1(n))
-        if R2:R2_.append(da.R2(n))
+        if M1:
+            M1_.append(da.M1(n))
+        if M2:
+            M2_.append(da.M2(n))
+        if L1:
+            L1_.append(da.L1(n))
+        if L2:
+            L2_.append(da.L2(n))
+        if R1:
+            R1_.append(da.R1(n))
+        if R2:
+            R2_.append(da.R2(n))
 
     ret = []
-    if M1:ret.append(M1_)
-    if M2:ret.append(M2_)
-    if L1:ret.append(L1_)
-    if L2:ret.append(L2_)
-    if R1:ret.append(R1_)
-    if R2:ret.append(R2_)
+    if M1:
+        ret.append(M1_)
+    if M2:
+        ret.append(M2_)
+    if L1:
+        ret.append(L1_)
+    if L2:
+        ret.append(L2_)
+    if R1:
+        ret.append(R1_)
+    if R2:
+        ret.append(R2_)
 
     return tuple(ret)
