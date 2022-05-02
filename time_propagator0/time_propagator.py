@@ -984,7 +984,7 @@ class TimePropagator:
         if not hasattr(self, "samples"):
             self.setup_samples()
 
-        final_step = int(self.num_steps * self.inputs("stop_run_at")) - 1
+        final_step = int(self.num_steps) - 1
 
         time_points = self.samples["time_points"]
         it_n = np.arange(len(time_points))
