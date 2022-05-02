@@ -1,24 +1,20 @@
 import numpy as np
 
-import lasers
+from time_propagator0 import lasers
 
-from setup_daltonproject import (
-    setup_system_da,
-    setup_dp_dalton,
+from time_propagator0.setup_daltonproject import (
     setup_dp_molcas,
-    get_amps,
-    get_response_vectors,
 )
 
-from qcelemental import periodictable
-
 import importlib
+
+from qcelemental import periodictable
 
 ################################################################################
 class Inputs:
     def __init__(self, a):
         """a: NpzFile object or dict or list (containing dicts)"""
-        #self.to_listify = [
+        # self.to_listify = [
         #    "field_strength",
         #    "omega",
         #    "time_after_pulse",
@@ -26,9 +22,9 @@ class Inputs:
         #    "phase",
         #    "sigma",
         #    "pulse",
-        #]
+        # ]
 
-        #self.require_2d = ["k_direction", "polarization"]
+        # self.require_2d = ["k_direction", "polarization"]
 
         if type(a) is dict:
             self.setup_dict(a)
@@ -38,13 +34,13 @@ class Inputs:
             self.setup_npz(a)
 
     def format(self, dict_):
-        if 'pulses' in dict_.keys():
-            for el in dict_['pulses']:
+        if "pulses" in dict_.keys():
+            for el in dict_["pulses"]:
                 if el in dict_:
-                    if 'polarization' in dict_[el]:
-                        dict_[el]['polarization'] = np.array(dict_[el]['polarization'])
-                    if 'k_direction' in dict_[el]:
-                        dict_[el]['k_direction'] = np.array(dict_[el]['k_direction'])
+                    if "polarization" in dict_[el]:
+                        dict_[el]["polarization"] = np.array(dict_[el]["polarization"])
+                    if "k_direction" in dict_[el]:
+                        dict_[el]["k_direction"] = np.array(dict_[el]["k_direction"])
         return dict_
 
     def setup_dict(self, a):
@@ -70,43 +66,42 @@ class Inputs:
             dict_ = {**dict0, **dict1, **dict2, **dict3}
             self.inputs = self.format(dict_)
 
-    def set_from_file(self,file_name):
-        input_module = importlib.import_module(file_name.replace('.py',''))
-        input_attr_names = [el for el in dir(input_module) if not el.startswith('__')]
+    def set_from_file(self, file_name):
+        input_module = importlib.import_module(file_name.replace(".py", ""))
+        input_attr_names = [el for el in dir(input_module) if not el.startswith("__")]
         for el in input_attr_names:
-            input_dict = getattr(input_module,el)
+            input_dict = getattr(input_module, el)
             if type(input_dict) == dict:
                 self.set_from_dict(input_dict)
 
-    def set_from_dict(self,input_dict):
+    def set_from_dict(self, input_dict):
         for key in input_dict:
-            self.set(key,input_dict[key])
+            self.set(key, input_dict[key])
 
-    def set(self,key,value):
+    def set(self, key, value):
         self.inputs[key] = value
         self.inputs = self.format(self.inputs)
 
-    def has_key(self,key):
+    def has_key(self, key):
         return key in self.inputs.keys()
 
     def check_consistency(self):
         """method to check input consistency"""
-        #check that only harmonic pulses have complex polarization vectors
+        # check that only harmonic pulses have complex polarization vectors
 
-        if self.has_key('pulses'):
-            for el in self.inputs['pulses']:
-                s = 'pulse must have defined inputs'
-                assert self.has_key(el),s
+        if self.has_key("pulses"):
+            for el in self.inputs["pulses"]:
+                s = "pulse must have defined inputs"
+                assert self.has_key(el), s
 
                 pulse_inputs = self.inputs[el]
 
-                s = 'pulses must have defined polarization'
-                assert 'polarization' in pulse_inputs.keys(), s
-                uI = (pulse_inputs['polarization']).imag
+                s = "pulses must have defined polarization"
+                assert "polarization" in pulse_inputs.keys(), s
+                uI = (pulse_inputs["polarization"]).imag
                 if np.max(np.abs(uI)) > 1e-14:
-                    s = 'only harmonic pulses can have complex polarization vectors'
-                    assert 'omega' in self.inputs[el], s
-
+                    s = "only harmonic pulses can have complex polarization vectors"
+                    assert "omega" in self.inputs[el], s
 
     def __call__(self, key):
         """key: str"""
@@ -114,7 +109,17 @@ class Inputs:
 
 
 class PlaneWaveOperators:
-    def __init__(self, C, input_file, basis, pulses_cos, pulses_sin, n_basis, custom_basis=False, change_basis=True):
+    def __init__(
+        self,
+        C,
+        input_file,
+        basis,
+        pulses_cos,
+        pulses_sin,
+        n_basis,
+        custom_basis=False,
+        change_basis=True,
+    ):
         self.C = C
         self.change_basis = change_basis
         self.input_file = input_file
@@ -133,7 +138,7 @@ class PlaneWaveOperators:
         )
         self.A = np.zeros((n_pulses, 2, n_basis, n_basis), dtype=np.complex128)
 
-        self.set_pulses(pulses_cos,pulses_sin)
+        self.set_pulses(pulses_cos, pulses_sin)
 
     def create_indices(self):
         self.indices = {}
@@ -147,22 +152,20 @@ class PlaneWaveOperators:
     def set_pulses(self, pulses_cos, pulses_sin):
         self.pulses = []
         for i in np.arange(self.n_pulses):
-            self.pulses.append([pulses_cos[i],pulses_sin[i]])
+            self.pulses.append([pulses_cos[i], pulses_sin[i]])
 
-    def construct_operators(
-        self, inputs, compute_A=True
-    ):
+    def construct_operators(self, inputs, compute_A=True):
         quadratic_terms = inputs("quadratic_terms")
         cross_terms = inputs("cross_terms")
 
         for i in np.arange(self.n_pulses):
-            pulse_name = inputs('pulses')[i]
+            pulse_name = inputs("pulses")[i]
             pulse_inputs = inputs(pulse_name)
-            k_direction = pulse_inputs['k_direction']
-            omega = pulse_inputs['omega']
+            k_direction = pulse_inputs["k_direction"]
+            omega = pulse_inputs["omega"]
 
-            Ru = pulse_inputs['polarization'].real
-            Iu = pulse_inputs['polarization'].imag
+            Ru = pulse_inputs["polarization"].real
+            Iu = pulse_inputs["polarization"].imag
 
             cosp, sinp, cos2, sin2 = self.compute_vpi(omega, k_direction)
             self.Ap_real[i, 0, :, :] = np.tensordot(Ru, cosp, axes=(0, 0))
@@ -184,20 +187,17 @@ class PlaneWaveOperators:
             pulse_nums = np.arange(self.n_pulses)
             for i in pulse_nums:
                 for j in pulse_nums[pulse_nums != i]:
-                    pulse_name_i = inputs['pulses'][i]
-                    pulse_name_j = inputs['pulses'][j]
+                    pulse_name_i = inputs("pulses")[i]
+                    pulse_name_j = inputs("pulses")[j]
 
-                    pulse_inputs_i = inputs[pulse_name_i]
-                    pulse_inputs_j = inputs[pulse_name_j]
+                    pulse_inputs_i = inputs(pulse_name_i)
+                    pulse_inputs_j = inputs(pulse_name_j)
 
-                    k_direction_i = pulse_inputs_i['k_direction']
-                    omega_i = pulse_inputs_i['omega']
+                    k_direction_i = pulse_inputs_i["k_direction"]
+                    omega_i = pulse_inputs_i["omega"]
 
-                    k_direction_i = pulse_inputs_i['k_direction']
-                    omega_i = pulse_inputs_i['omega']
-
-                    Ru = pulse_inputs['polarization'].real
-                    Iu = pulse_inputs['polarization'].imag
+                    k_direction_j = pulse_inputs_j["k_direction"]
+                    omega_j = pulse_inputs_j["omega"]
 
                     ck_i = omega_i * np.array(k_direction_i)
                     ck_j = omega_j * np.array(k_direction_j)
@@ -215,7 +215,7 @@ class PlaneWaveOperators:
                     self.A2[i, j, 2, :, :] = cos2
                     self.A2[i, j, 3, :, :] = sin2
 
-    def transform_operator(self,a):
+    def transform_operator(self, a):
         if self.change_basis:
             return np.dot(np.dot(self.C.T, a), self.C)
         else:
@@ -247,15 +247,15 @@ class PlaneWaveOperators:
         return cosp, sinp, cos2, sin2
 
     def linear_operator_is_zero(self, laser_no, component, contraction, eps=1e-14):
-        Ap = self.Ap_real if contraction == 'real' else self.Ap_imag
+        Ap = self.Ap_real if contraction == "real" else self.Ap_imag
         op = Ap[laser_no, self.indices[component], :, :]
         is_zero = True if np.max(np.abs(op)) < eps else False
         return is_zero
 
     def linear_operator(self, laser_no, component, contraction, C=None, C_tilde=None):
         """component: 'cos' or 'sin'
-           contraction: 'real' or 'imag'"""
-        Ap = self.Ap_real if contraction == 'real' else self.Ap_imag
+        contraction: 'real' or 'imag'"""
+        Ap = self.Ap_real if contraction == "real" else self.Ap_imag
         if (C is None) or (C_tilde is None):
             return Ap[laser_no, self.indices[component], :, :]
         else:
@@ -303,7 +303,6 @@ class PlaneWaveOperators:
         g1 = self.pulses[laser_no1][self.indices[component1]]
         g2 = self.pulses[laser_no2][self.indices[component2]]
         return lambda x: g1(x) * g2(x)
-
 
     def A0(self, laser_no):
         return self.pulses[laser_no][0].A0(0)
