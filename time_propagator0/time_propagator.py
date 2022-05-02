@@ -450,7 +450,7 @@ class TimePropagator:
                     o0 = CustomOneBodyOperator(pulse, cross_dipole_operator)
                     operators.append(o0)
                 if not IuIu_is_zero:
-                    pulse = lambda x: IuIu * Ipulse(x) ** 2
+                    pulse = lambda x: IuIu * Ipulse_i(x) * Ipulse_j(x)
                     o0 = CustomOneBodyOperator(pulse, cross_dipole_operator)
                     operators.append(o0)
 
@@ -501,21 +501,21 @@ class TimePropagator:
             uII = np.dot(self.Iu[i], self.Iu[i])
             uIR = uRI
 
-            p_cos_p = lambda x: 0.5 * (
+            p_cos_p = lambda x: 0.25 * (
                 uRR * (g1i_g1j(x) - g2i_g2j(x))
                 + uRI * (g1i_g2j(x) + g2i_g1j(x))
                 + uIR * (g2i_g1j(x) + g1i_g2j(x))
                 + uII * (g2i_g2j(x) - g1i_g1j(x))
             )
 
-            p_cos_m = lambda x: 0.5 * (
+            p_cos_m = lambda x: 0.25 * (
                 uRR * (g1i_g1j(x) + g2i_g2j(x))
                 + uRI * (g1i_g2j(x) - g2i_g1j(x))
                 + uIR * (g2i_g1j(x) - g1i_g2j(x))
                 + uII * (g2i_g2j(x) + g1i_g1j(x))
             )
 
-            p_sin_p = lambda x: 0.5 * (
+            p_sin_p = lambda x: 0.25 * (
                 uRR * (g1i_g2j(x) + g2i_g1j(x))
                 + uRI * (g2i_g2j(x) - g1i_g1j(x))
                 + uIR * (g2i_g2j(x) - g1i_g1j(x))
