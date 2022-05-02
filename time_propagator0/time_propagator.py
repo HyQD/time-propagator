@@ -281,8 +281,6 @@ class TimePropagator:
             y0[0] = 1.0
         elif self.inputs("method")[:2] == "ci":
             self.cc.compute_ground_state(k=1)
-            print(self.cc.C)
-            print(self.cc.C.shape)
             y0 = self.cc.C[:, 0]
         elif self.correlated:
             if self.orbital_adaptive:
