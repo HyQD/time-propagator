@@ -8,20 +8,31 @@ import tqdm
 
 from time_propagator0 import lasers
 
-from time_propagator0.projectors import (
+from time_propagator0.stationary_states.projectors import (
     two_component_EOM_projector,
     conventional_EOM_projector,
     LR_projector,
-    rccsd_overlap,
 )
-from time_propagator0.helper_functions import compute_R0_ as compute_R0
+
+from time_propagator0.stationary_states.compute_projectors import (
+    compute_conventional_EOM_projector,
+    compute_two_component_EOM_projector,
+    compute_LR_projector,
+    compute_R0,
+)
+
+from time_propagator0.stationary_states.stationary_states_containers import (
+    CIStatesContainer,
+    CCStatesContainerMemorySaver,
+    setup_CCStatesContainer_from_dalton,
+    setup_CCStatesContainerMemorySaver_from_dalton,
+)
+
 
 from time_propagator0.utils import Inputs, PlaneWaveOperators
 
 from time_propagator0.setup_daltonproject import (
-    setup_system_da,
-    setup_dp_dalton,
-    get_response_vectors,
+    setup_response_vectors_from_dalton,
 )
 
 import time
@@ -194,6 +205,7 @@ class TimePropagator:
                     add_spin=False,
                     anti_symmetrize=False,
                 )
+
             elif (not self.correlated) and (self.restricted):
                 from time_propagator0.custom_system_mod import construct_pyscf_system_ao
 
@@ -204,6 +216,7 @@ class TimePropagator:
                     add_spin=False,
                     anti_symmetrize=False,
                 )
+
             elif (self.correlated) and (not self.restricted):
                 from time_propagator0.custom_system_mod import (
                     construct_pyscf_system_rhf,
@@ -214,43 +227,102 @@ class TimePropagator:
                 )
         elif program == "dalton":
             if (self.correlated) and (self.restricted):
-                from time_propagator0.setup_daltonproject import construct_dalton_system
-
-                QS, self.C = construct_dalton_system(
-                    molecule=molecule, basis=basis, charge=charge, change_basis=True
+                from time_propagator0.custom_system_mod import (
+                    construct_dalton_system_rhf,
                 )
+
+                QS, self.C = construct_dalton_system_rhf(
+                    molecule=molecule,
+                    basis=basis,
+                    charge=charge,
+                    add_spin=False,
+                    anti_symmetrize=False,
+                )
+
             elif (not self.correlated) and (self.restricted):
-                from time_propagator0.setup_daltonproject import construct_dalton_system
-
-                QS, C = construct_dalton_system(
-                    molecule=molecule, basis=basis, charge=charge, change_basis=False
+                from time_propagator0.custom_system_mod import (
+                    construct_dalton_system_ao,
                 )
+
+                QS, C = construct_dalton_system_ao(
+                    molecule=molecule,
+                    basis=basis,
+                    charge=charge,
+                    add_spin=False,
+                    anti_symmetrize=False,
+                )
+
+            elif (self.correlated) and (not self.restricted):
+                from time_propagator0.custom_system_mod import (
+                    construct_dalton_system_rhf,
+                )
+
+                QS, C = construct_dalton_system_rhf(
+                    molecule=molecule,
+                    basis=basis,
+                    charge=charge,
+                )
+
         self.set_quantum_system(QS)
 
     def set_quantum_system(self, QS):
         """QS: QuantumSystem"""
         self.QS = QS
 
-    def setup_response_vectors(self, program):
-        """program: str"""
-        implemented = ["dalton"]
-        if not program in implemented:
-            raise NotImplementedError
-        if program == "dalton":
-            da = setup_dp_dalton(
-                self.input_file,
-                self.inputs("basis"),
-                self.inputs("n_excited_states"),
-                self.inputs("n_electrons"),
-                method=method,
-                custom_basis=self.inputs("custom_basis"),
-            )
-        self.set_response_vectors(da)
+    def setup_projectors(self, CC_program="dalton"):
+        """CC_program: str"""
+        implemented_methods = [
+            "rcc2",
+            "rccsd",
+            "cis",
+            "cid",
+            "cisd",
+            "cidt",
+            "cisdt",
+            "cidtq",
+            "cisdtq",
+        ]
 
-    def set_response_vectors(
-        self, da=None, L1=None, L2=None, R1=None, R2=None, M1=None, M2=None
+        s = r'projectors setup is not implemented for {self.inputs("method")}'
+        assert self.inputs("method") in implemented_methods
+
+        if self.inputs("method")[:2] == "ci":
+            cc_kwargs = dict(verbose=False)
+            cc = self.CC(self.QS, **cc_kwargs)
+
+            n = self.inputs("n_excited_states") + 1
+            cc.compute_ground_state(k=n)
+
+            self.set_projectors(C=cc.C)
+
+        else:
+            implemented_programs = ["dalton"]
+
+            s = r"CC projectors setup is not implemented with {CC_program)}"
+            assert CC_program in implemented_programs
+
+            if CC_program == "dalton":
+                da = setup_response_vectors_from_dalton(
+                    self.inputs("molecule"),
+                    self.inputs("basis"),
+                    self.inputs("n_excited_states"),
+                    self.inputs("charge"),
+                    method=self.inputs("method"),
+                )
+
+                self.set_projectors(da=da)
+
+    def set_projectors(
+        self, da=None, L1=None, L2=None, R1=None, R2=None, M1=None, M2=None, C=None
     ):
-        """da : daltonproject.dalton.arrays.Arrays object"""
+        """da : daltonproject.dalton.arrays.Arrays object
+        L1: left EOMCC eigenvectors, singles
+        L2: left EOMCC eigenvectors, doubles
+        R1: right EOMCC eigenvectors, singles
+        R2: right EOMCC eigenvectors, doubles
+        M1: M vector, singles
+        M2: M vector, doubles
+        C: CI coefficient matrix"""
         if (
             (L1 is not None)
             or (L2 is not None)
@@ -259,14 +331,18 @@ class TimePropagator:
             or (M1 is not None)
             or (M2 is not None)
         ):
-            raise NotImplementedError
+            self.ssc = CCStatesContainer(L1, L2, R1, R2, M1, M2)
+
+        elif C is not None:
+            self.ssc = CIStatesContainer(C)
+
         elif da is not None:
-            self.da = da
-            energies = self.da.state_energies
-            excitation_energies = (self.energies - self.energies[0])[1:]
-            self.nr_of_excited_states = len(self.excitation_energies)
-        else:
-            pass
+            if self.inputs("load_all_response_vectors"):
+                self.ssc = setup_CCStatesContainer_from_dalton(
+                    da, self.inputs("sample_LR_projectors")
+                )
+            else:
+                self.ssc = setup_CCStatesContainerMemorySaver_from_dalton(da)
 
     def setup_ground_state(self):
         """set ground state and TD methods"""
@@ -300,6 +376,15 @@ class TimePropagator:
             )
             y0 = self.cc.C.ravel()
         self.set_initial_state(y0)
+
+    def setup_initial_state(self, state_number=0):
+        """state_number : int"""
+        if hasattr(self, "ssc") and self.inputs("method")[:2] == "ci":
+            self.set_initial_state(self.ssc.C[:, state_number])
+        elif state_number == 0:
+            self.setup_ground_state()
+        else:
+            raise NotImplementedError
 
     def set_initial_state(self, initial_state):
         if self.correlated:
@@ -980,18 +1065,23 @@ class TimePropagator:
                 if self.inputs("sample_kinetic_momentum")
                 else None
             )
+            samples["CI_projectors"] = (
+                np.zeros((self.num_steps, self.ssc.n_states))
+                if self.inputs("sample_CI_projectors")
+                else None
+            )
             samples["EOM_projectors"] = (
-                np.zeros((self.num_steps, self.nr_of_excited_states))
+                np.zeros((self.num_steps, self.ssc.n_states))
                 if self.inputs("sample_EOM_projectors")
                 else None
             )
             samples["EOM2_projectors"] = (
-                np.zeros((self.num_steps, self.nr_of_excited_states))
+                np.zeros((self.num_steps, self.ssc.n_states))
                 if self.inputs("sample_EOM2_projectors")
                 else None
             )
             samples["LR_projectors"] = (
-                np.zeros((self.num_steps, self.nr_of_excited_states))
+                np.zeros((self.num_steps, self.ssc.n_states))
                 if self.inputs("sample_LR_projectors")
                 else None
             )
@@ -1022,58 +1112,26 @@ class TimePropagator:
         if not hasattr(self, "samples"):
             self.setup_samples()
 
-        final_step = int(self.num_steps) - 1
-
-        time_points = self.samples["time_points"]
-        it_n = np.arange(len(time_points))
-
-        compute_projectors = bool(
+        compute_CC_projectors = bool(
             self.inputs("sample_EOM_projectors")
             + self.inputs("sample_EOM2_projectors")
             + self.inputs("sample_LR_projectors")
         )
 
-        load_all_vectors = True if self.inputs("load_all_response_vectors") else False
-
-        if compute_projectors:
-            if load_all_vectors:
-                L1, L2, R1, R2 = get_response_vectors(
-                    self.da, self.nr_of_excited_states, M1=False, M2=False
-                )
-                if self.inputs("LR_projectors"):
-                    M1, M2 = get_response_vectors(
-                        self.da,
-                        self.nr_of_excited_states,
-                        L1=False,
-                        L2=False,
-                        R1=False,
-                        R2=False,
-                    )
+        if compute_CC_projectors:
             t, l = self.cc.get_amplitudes(get_t_0=True)
-            t0, t1, t2, l1, l2 = t[0][0], t[1], t[2], l[0], l[1]
-            t0, t1, t2, l1, l2 = t[0][0], t[1], t[2], l[0], l[1]
-            t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
-            t0_t, t1_t, t2_t, l1_t, l2_t = t[0][0], t[1], t[2], l[0], l[1]
-            R0 = np.empty(self.nr_of_excited_states)
-            for n in range(self.nr_of_excited_states):
-                if not load_all_vectors:
-                    R1n, R2n = get_response_vectors(
-                        self.da,
-                        self.nr_of_excited_states,
-                        excitation_levels=[n + 1],
-                        M1=False,
-                        M2=False,
-                        L1=False,
-                        L2=False,
-                    )
-                    R0[n] = compute_R0(l1, l2, R1n[0], R2n[0])
-                else:
-                    R0[n] = compute_R0(l1, l2, R1[n], R2[n])
+            self.ssc.t = t
+            self.ssc.l = l
+
+            self.ssc.R0 = compute_R0(self.ssc)
+
+        self.samples["time_points"][i0] = self.r.t
+
+        final_step = int(self.num_steps) - 1
+        time_points = self.samples["time_points"]
 
         i = 0
         i0 = 0
-
-        self.samples["time_points"][i0] = self.r.t
 
         f0 = final_step
 
@@ -1156,9 +1214,16 @@ class TimePropagator:
                         self.r.t, rho_qp
                     )
 
-            if compute_projectors or self.inputs("sample_auto_correlation"):
-                t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
-                t0_t, t1_t, t2_t, l1_t, l2_t = t[0][0], t[1], t[2], l[0], l[1]
+            if self.inputs("sample_CI_projectors"):
+                for n in range(self.ssc.n_states):
+                    self.samples["CI_projectors"][i, n] = (
+                        np.abs(
+                            self.tdcc.compute_overlap(
+                                self.r.t, self.ssc.C[:, n], self.r.y
+                            )
+                        )
+                        ** 2
+                    )
 
             # AUTO CORRELATION
             if self.inputs("sample_auto_correlation"):
@@ -1167,87 +1232,22 @@ class TimePropagator:
                 )
 
             # EOM PROJECTORS
-            if compute_projectors:
-                for n in range(self.nr_of_excited_states):
-                    if not load_all_vectors:
-                        L1n, L2n, R1n, R2n = get_response_vectors(
-                            self.da,
-                            self.nr_of_excited_states,
-                            excitation_levels=[n + 1],
-                            M1=False,
-                            M2=False,
-                        )
-                        L1n, L2n, R1n, R2n = L1n[0], L2n[0], R1n[0], R2n[0]
-                    else:
-                        L1n, L2n, R1n, R2n = L1[n], L2[n], R1[n], R2[n]
-
+            if compute_CC_projectors:
+                t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
+                for n in range(self.ssc.n_states):
                     if self.inputs("sample_EOM_projectors"):
                         self.samples["EOM_projectors"][
                             i, n
-                        ] = conventional_EOM_projector(
-                            L1n,
-                            L2n,
-                            l1_t,
-                            l2_t,
-                            t0_t,
-                            t1_t,
-                            t2_t,
-                            t1,
-                            t2,
-                            R0[n],
-                            R1n,
-                            R2n,
-                        )
+                        ] = compute_conventional_EOM_projector(self.ssc, t, l, n)
 
                     if self.inputs("sample_EOM2_projectors"):
                         self.samples["EOM2_projectors"][
                             i, n
-                        ] = two_component_EOM_projector(
-                            L1n,
-                            L2n,
-                            l1_t,
-                            l2_t,
-                            t0_t,
-                            t1_t,
-                            t2_t,
-                            t1,
-                            t2,
-                            R0[n],
-                            R1n,
-                            R2n,
-                        )
+                        ] = compute_two_component_EOM_projector(self.ssc, t, l, n)
 
                     if self.inputs("sample_LR_projectors"):
-                        if not self.load_all_vectors:
-                            M1n, M2n = get_response_vectors(
-                                self.da,
-                                self.nr_of_excited_states,
-                                excitation_levels=[n + 1],
-                                L1=False,
-                                L2=False,
-                                R1=False,
-                                R2=False,
-                            )
-                            M1n, M2n = M1n[0], M2n[0]
-                        else:
-                            M1n, M2n = M1[n], M2[n]
-                        self.samples["LR_projectors"][i, n] = LR_projector(
-                            M1n,
-                            M2n,
-                            L1n,
-                            L2n,
-                            l1,
-                            l2,
-                            l1_t,
-                            l2_t,
-                            t1,
-                            t2,
-                            t0_t,
-                            t1_t,
-                            t2_t,
-                            R0[n],
-                            R1n,
-                            R2n,
+                        self.samples["LR_projectors"][i, n] = compute_LR_projector(
+                            self.ssc, t, l, n
                         )
 
             self.r.integrate(self.r.t + self.inputs("dt"))
@@ -1285,5 +1285,8 @@ class TimePropagator:
             self.samples["state"] = self.r.y
             self.samples["old_i"] = i
             self.samples["old_t"] = self.r.t
+
+        if self.inputs("return_inputs"):
+            self.samples["inputs"] = self.inputs.inputs
 
         return self.samples
