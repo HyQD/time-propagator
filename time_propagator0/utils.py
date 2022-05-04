@@ -3,7 +3,7 @@ import numpy as np
 from time_propagator0 import lasers
 
 from time_propagator0.setup_daltonproject import (
-    setup_dp_molcas,
+    setup_plane_wave_integrals_from_molcas,
 )
 
 import importlib
@@ -223,7 +223,7 @@ class PlaneWaveOperators:
 
     def compute_vpi(self, omega, k_direction):
         print("Running Molcas, omega: ", omega)
-        self.ma = setup_dp_molcas(
+        self.ma = setup_plane_wave_integrals_from_molcas(
             self.input_file,
             self.basis,
             omega,
