@@ -1,5 +1,6 @@
 import abc
 
+
 class StationaryStatesContainer(metaclass=abc.ABCMeta):
     @property
     def L1(self):
@@ -46,50 +47,51 @@ class StationaryStatesContainer(metaclass=abc.ABCMeta):
         return self._n_states
 
     @L1.setter
-    def L1(self,L1):
+    def L1(self, L1):
         self._L1 = L1
 
     @L2.setter
-    def L2(self,L2):
+    def L2(self, L2):
         self._L2 = L2
 
     @R1.setter
-    def R1(self,R1):
+    def R1(self, R1):
         self._R1 = R1
 
     @R2.setter
-    def R2(self,R2):
+    def R2(self, R2):
         self._R2 = R2
 
     @M1.setter
-    def M1(self,M1):
+    def M1(self, M1):
         self._M1 = M1
 
     @M2.setter
-    def M2(self,M2):
+    def M2(self, M2):
         self._M2 = M2
 
     @R0.setter
-    def R0(self,R0):
+    def R0(self, R0):
         self._R0 = R0
 
     @t.setter
-    def t(self,t):
+    def t(self, t):
         self._t = t
 
     @l.setter
-    def l(self,l):
+    def l(self, l):
         self._l = l
 
     @C.setter
-    def C(self,C):
+    def C(self, C):
         self._C = C
 
 
 class CIStatesContainer(StationaryStatesContainer):
     def __init__(self, C=None):
         self._C = C
-        self._n_states = len(C[0,:])
+        self._n_states = len(C[0, :])
+
 
 class CCStatesContainer(StationaryStatesContainer):
     def __init__(
@@ -119,10 +121,11 @@ class CCStatesContainer(StationaryStatesContainer):
 class CCStatesContainerMemorySaver(StationaryStatesContainer):
     def __init__(self, da, R0=None, t=None, l=None):
         class MakeSubscribtable:
-            def __init__(self,f):
+            def __init__(self, f):
                 self.f = f
-            def __getitem__(self,n):
-                return self.f(n+1)
+
+            def __getitem__(self, n):
+                return self.f(n + 1)
 
         self._L1 = MakeSubscribtable(da.L1)
         self._L2 = MakeSubscribtable(da.L2)
@@ -130,11 +133,10 @@ class CCStatesContainerMemorySaver(StationaryStatesContainer):
         self._R2 = MakeSubscribtable(da.R2)
         self._M1 = MakeSubscribtable(da.M1)
         self._M2 = MakeSubscribtable(da.M2)
-        self._R0=None
-        self._t=None
-        self._l=None
+        self._R0 = None
+        self._t = None
+        self._l = None
         self._n_states = len(da.state_energies) - 1
-
 
 
 def setup_CCStatesContainer_from_dalton(da, LR_projectors=False):
@@ -144,7 +146,7 @@ def setup_CCStatesContainer_from_dalton(da, LR_projectors=False):
     if LR_projectors:
         M1, M2 = [], []
 
-    for n in range(1,n_states+1):
+    for n in range(1, n_states + 1):
         L1.append(da.L1(n))
         L2.append(da.L2(n))
         R1.append(da.R1(n))
@@ -158,6 +160,7 @@ def setup_CCStatesContainer_from_dalton(da, LR_projectors=False):
         if LR_projectors
         else CCStatesContainer(L1, L2, R1, R2)
     )
+
 
 def setup_CCStatesContainerMemorySaver_from_dalton(da):
     return CCStatesContainerMemorySaver(da)
