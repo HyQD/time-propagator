@@ -7,6 +7,8 @@ from quantum_systems import (
     QuantumSystem,
 )
 
+from time_propagator0.utils import get_atomic_symbols
+
 
 def construct_pyscf_system_ao(
     molecule,
@@ -63,13 +65,18 @@ def construct_pyscf_system_ao(
     """
 
     import pyscf
+    import basis_set_exchange as bse
+    from time_propagator0.utils import get_atomic_symbols
 
     if np is None:
         import numpy as np
 
+    atomic_symbols = get_atomic_symbols(molecule)
+
     mol = pyscf.gto.Mole()
     mol.unit = "bohr"
-    mol.build(atom=molecule, basis=basis, **kwargs)
+    mol.basis = bse.api.get_basis(name=basis, fmt="nwchem", elements=atomic_symbols)
+    mol.build(atom=molecule, **kwargs)
     nuclear_repulsion_energy = mol.energy_nuc()
 
     n = mol.nelectron
@@ -93,7 +100,7 @@ def construct_pyscf_system_ao(
     bs.nuclear_repulsion_energy = nuclear_repulsion_energy
     bs.particle_charge = -1
     bs.position = position
-    bs.momentum = -1j*momentum
+    bs.momentum = 1j * momentum
     bs.change_module(np=np)
 
     system = SpatialOrbitalSystem(n, bs)
@@ -170,22 +177,25 @@ def construct_pyscf_system_rhf(
     """
 
     import pyscf
+    import basis_set_exchange as bse
+    from time_propagator0.utils import get_atomic_symbols
 
     if np is None:
         import numpy as np
 
+    atomic_symbols = get_atomic_symbols(molecule)
+
     # Build molecule in AO-basis
     mol = pyscf.gto.Mole()
     mol.unit = "bohr"
+    mol.basis = bse.api.get_basis(name=basis, fmt="nwchem", elements=atomic_symbols)
     mol.charge = charge
     mol.cart = cart
-    mol.build(atom=molecule, basis=basis, **kwargs)
+    mol.build(atom=molecule, **kwargs)
     nuclear_repulsion_energy = mol.energy_nuc()
 
     n = mol.nelectron
-    assert (
-        n % 2 == 0
-    ), "We require closed shell, with an even number of particles"
+    assert n % 2 == 0, "We require closed shell, with an even number of particles"
 
     l = mol.nao
 
@@ -218,21 +228,27 @@ def construct_pyscf_system_rhf(
     bs.nuclear_repulsion_energy = nuclear_repulsion_energy
     bs.particle_charge = -1
     bs.position = position
-    bs.momentum = -1j*momentum
+    bs.momentum = 1j * momentum
     bs.change_module(np=np)
 
     system = SpatialOrbitalSystem(n, bs)
     system.change_basis(C)
 
     return (
-        (system.construct_general_orbital_system(anti_symmetrize=anti_symmetrize),C)
+        (system.construct_general_orbital_system(anti_symmetrize=anti_symmetrize), C)
         if add_spin
-        else (system,C)
+        else (system, C)
     )
 
 
 def construct_dalton_system_ao(
-    molecule, basis, add_spin=True, anti_symmetrize=True, np=None, charge=0, custom_basis=False
+    molecule,
+    basis,
+    add_spin=True,
+    anti_symmetrize=True,
+    np=None,
+    charge=0,
+    custom_basis=False,
 ):
     """sets up a QuantumSystem object with arrays computed from a
     daltonproject.dalton.arrays.Arrays object.
@@ -243,16 +259,17 @@ def construct_dalton_system_ao(
     if np is None:
         import numpy as np
 
-    mol = dp.Molecule(input_file=molecule)
+    if molecule[-4:] == ".xyz":
+        mol = dp.Molecule(input_file=molecule)
+    else:
+        mol = dp.Molecule(atoms=molecule)
+
     mol.charge = charge
 
     n_electrons_neutral = symbols2nelectrons(mol.elements)
     n_electrons = n_electrons_neutral - charge
 
-    if not custom_basis:
-        basis_set = dp.Basis(basis=basis, custom_basis=custom_basis)
-    else:
-        basis_set = dp.Basis(basis=basis + ".dalinp", custom_basis=custom_basis)
+    basis_set = dp.Basis(basis=basis, custom_basis=custom_basis)
 
     ccsd = dp.QCMethod("CC2")
     prop = dp.Property(response_vectors=True)
@@ -303,9 +320,14 @@ def construct_dalton_system_ao(
     )
 
 
-
 def construct_dalton_system_rhf(
-    molecule, basis, add_spin=True, anti_symmetrize=True, np=None, charge=0, custom_basis=False
+    molecule,
+    basis,
+    add_spin=True,
+    anti_symmetrize=True,
+    np=None,
+    charge=0,
+    custom_basis=False,
 ):
     """sets up a QuantumSystem object with arrays computed from a
     daltonproject.dalton.arrays.Arrays object.
@@ -316,16 +338,17 @@ def construct_dalton_system_rhf(
     if np is None:
         import numpy as np
 
-    mol = dp.Molecule(input_file=molecule)
+    if molecule[-4:] == ".xyz":
+        mol = dp.Molecule(input_file=molecule)
+    else:
+        mol = dp.Molecule(atoms=molecule)
+
     mol.charge = charge
 
     n_electrons_neutral = symbols2nelectrons(mol.elements)
     n_electrons = n_electrons_neutral - charge
 
-    if not custom_basis:
-        basis_set = dp.Basis(basis=basis, custom_basis=custom_basis)
-    else:
-        basis_set = dp.Basis(basis=basis + ".dalinp", custom_basis=custom_basis)
+    basis_set = dp.Basis(basis=basis, custom_basis=custom_basis)
 
     ccsd = dp.QCMethod("CC2")
     prop = dp.Property(response_vectors=True)
@@ -338,6 +361,8 @@ def construct_dalton_system_rhf(
     s = da.s
     u = da.u  # slow implementation
     C = da.c.T
+
+    print(C)
 
     x = da.position(0)
     y = da.position(1)
@@ -371,7 +396,7 @@ def construct_dalton_system_rhf(
     system = SpatialOrbitalSystem(n_electrons, bs)
     system.change_basis(C)
     return (
-        (system.construct_general_orbital_system(anti_symmetrize=anti_symmetrize),C)
+        (system.construct_general_orbital_system(anti_symmetrize=anti_symmetrize), C)
         if add_spin
-        else (system,C)
+        else (system, C)
     )
