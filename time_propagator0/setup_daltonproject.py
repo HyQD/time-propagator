@@ -14,9 +14,9 @@ from qcelemental import PhysicalConstantsContext
 constants = PhysicalConstantsContext("CODATA2018")
 
 
-def setup_response_vectors_from_dalton(
-    input_file,
-    basis_name,
+def compute_response_vectors_from_dalton(
+    molecule,
+    basis,
     n_excited_states,
     charge,
     method="CCSD",
@@ -30,24 +30,24 @@ def setup_response_vectors_from_dalton(
     elif method == "rccsd":
         method = "CCSD"
 
-    molecule = dp.Molecule(input_file=input_file)
-    molecule.charge = charge
-
-    if not custom_basis:
-        basis = dp.Basis(basis=basis_name, custom_basis=custom_basis)
+    if molecule[-4:] == ".xyz":
+        mol = dp.Molecule(input_file=molecule)
     else:
-        basis = dp.Basis(basis=basis_name + ".dalinp", custom_basis=custom_basis)
+        mol = dp.Molecule(atoms=molecule)
+    mol.charge = charge
+
+    basis_set = dp.Basis(basis=basis, custom_basis=custom_basis)
 
     ccsd = dp.QCMethod(method)
     prop = dp.Property(response_vectors=True)
     prop.excitation_energies(states=n_excited_states)
-    result = dp.dalton.compute(molecule, basis, ccsd, prop)
+    result = dp.dalton.compute(mol, basis_set, ccsd, prop)
 
     return dp.dalton.Arrays(result)
 
 
-def setup_plane_wave_integrals_from_molcas(
-    input_file, basis_name, omega, k, custom_basis=False, verbose=False
+def compute_plane_wave_integrals_from_molcas(
+    molecule, basis, omega, k, custom_basis=False, verbose=False
 ):
     import daltonproject as dp
 
@@ -57,17 +57,18 @@ def setup_plane_wave_integrals_from_molcas(
     if verbose:
         print("wavelength: ", wavelength)
 
-    molecule = dp.Molecule(input_file=input_file)
-    if not custom_basis:
-        basis = dp.Basis(basis=basis_name, custom_basis=custom_basis)
+    if molecule[-4:] == ".xyz":
+        mol = dp.Molecule(input_file=molecule)
     else:
-        basis = dp.Basis(basis=basis_name + ".molinp", custom_basis=custom_basis)
+        mol = dp.Molecule(atoms=molecule)
+
+    basis_set = dp.Basis(basis=basis, custom_basis=custom_basis)
 
     ccsd = dp.QCMethod("CCSD")
     prop = dp.Property(vector_potential=True)
     prop.vector_potential(k_direction=list(k), wavelength=wavelength)
 
-    result = dp.molcas.compute(molecule, basis, ccsd, prop)
+    result = dp.molcas.compute(mol, basis_set, ccsd, prop)
 
     return dp.molcas.Arrays(result)
 
