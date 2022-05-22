@@ -203,9 +203,10 @@ class TimePropagator:
         self.CC = CC
         self.TDCC = TDCC
 
-        self._log = ""
+        if not hasattr(self, "_log"):
+            self._log = ""
 
-        s = " - TimePropagator instance initiated with {method} method."
+        s = f" - TimePropagator instance initiated with {self.inputs('method')} method."
         self.log(s)
 
     def log(self, s, printout=False):
@@ -226,6 +227,8 @@ class TimePropagator:
 
         misc = output["misc"].item()
         self.iter = misc["iter"]
+
+        self._log = output["log"].item()
 
         s = "\n - Initiated from a previous run."
         self.log(s)
@@ -516,7 +519,6 @@ class TimePropagator:
         assert self.inputs("PWI_program") in implemented_programs
 
         program = self.inputs("PWI_program")
-
 
         if program == "molcas":
             pulse_inputs = [self.inputs(el) for el in self.inputs("pulses")]
