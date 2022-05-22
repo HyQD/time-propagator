@@ -2,6 +2,7 @@ import numpy as np
 from scipy.integrate import complex_ode
 from gauss_integrator import GaussIntegrator
 import tqdm
+import time
 
 from time_propagator0.stationary_states.compute_projectors import (
     compute_R0,
@@ -202,6 +203,16 @@ class TimePropagator:
         self.CC = CC
         self.TDCC = TDCC
 
+        self._log = ""
+
+        s = " - TimePropagator instance initiated with {method} method."
+        self.log(s)
+
+    def log(self, s, printout=False):
+        self._log += s
+        if printout:
+            print(s)
+
     def init_from_output(self, output):
         samples = dict((output["samples"]).item())
         self.set_samples(samples)
@@ -216,29 +227,44 @@ class TimePropagator:
         misc = output["misc"].item()
         self.iter = misc["iter"]
 
+        s = "\n - Initiated from a previous run."
+        self.log(s)
+
     def set_input(self, key, value):
         self.inputs.set(key, value)
+
+        s = "\nAdded input {key}:{value}"
+        self.log(s)
 
     def add_pulse(self, name, pulse_inputs):
         (self.inputs.inputs["pulses"]).append(name)
         self.inputs.set(name, pulse_inputs)
 
-    def setup_quantum_system(self, program, molecule=None, charge=None, basis=None):
-        """program: 'pyscf' ,'dalton',"""
-        implemented = ["pyscf", "dalton"]
-        if not program in implemented:
-            raise NotImplementedError
+        s = "\nAdded pulse {name}"
+        self.log(s)
 
+    def setup_quantum_system(
+        self, reference_program=None, molecule=None, charge=None, basis=None
+    ):
+        """reference_program: 'pyscf' ,'dalton',"""
         if molecule is not None:
             self.inputs.set("molecule", molecule)
         if basis is not None:
             self.inputs.set("basis", basis)
         if charge is not None:
             self.inputs.set("charge", charge)
+        if reference_program is not None:
+            self.inputs.set("reference_program", reference_program)
+
+        implemented = ["pyscf", "dalton"]
+        if not self.inputs("reference_program") in implemented:
+            raise NotImplementedError
 
         molecule = self.inputs("molecule")
         basis = self.inputs("basis")
         charge = self.inputs("charge")
+
+        program = self.inputs("reference_program")
 
         if program == "pyscf":
             if (self.correlated) and (self.restricted):
@@ -318,6 +344,9 @@ class TimePropagator:
 
         self.set_quantum_system(QS, C)
 
+        s = f'\n - Setup quantum system using {self.inputs("reference_program")}'
+        self.log(s)
+
     def set_quantum_system(self, QS, C=None):
         """QS: QuantumSystem
         C: HF coefficient matrix"""
@@ -325,8 +354,11 @@ class TimePropagator:
         if C is not None:
             self.C = C
 
-    def setup_projectors(self, CC_program="dalton"):
-        """CC_program: str"""
+        s = "\n - Set quantum system"
+        self.log(s)
+
+    def setup_projectors(self, EOMCC_program=None):
+        """EOMCC_program: str"""
         implemented_methods = [
             "rcc2",
             "rccsd",
@@ -351,13 +383,21 @@ class TimePropagator:
 
             self.set_projectors(C=cc.C)
 
+            s = f'\n - Setup {self.inputs("method")} projectors'
+            self.log(s)
+
         else:
+            if EOMCC_program is not None:
+                self.inputs.set("EOMCC_program", EOMCC_program)
+
             implemented_programs = ["dalton"]
 
-            s = r"CC projectors setup is not implemented with {CC_program)}"
-            assert CC_program in implemented_programs
+            program = self.inputs("EOMCC_program")
 
-            if CC_program == "dalton":
+            s = f"CC projectors setup is not implemented with {self.inputs('EOMCC_program')}"
+            assert program in implemented_programs
+
+            if program == "dalton":
                 da = compute_response_vectors_from_dalton(
                     self.inputs("molecule"),
                     get_basis(self.inputs("basis"), "dalton"),
@@ -366,9 +406,15 @@ class TimePropagator:
                     method=self.inputs("method"),
                     custom_basis=self.inputs("custom_basis"),
                 )
-                print(da.state_energies - da.state_energies[0])
 
                 self.set_projectors(da=da)
+
+                GS_energy = da.state_energies[0]
+                ES_energies = (da.state_energies - da.state_energies[0])[1:]
+                s = f"\n - Setup {self.inputs('method')} projectors using {self.inputs('EOMCC_program')}"
+                s += f"\n - Ground state energy: {GS_energy}"
+                s += f"\n - Excited state energies: {ES_energies}\n"
+                self.log(s, self.inputs("verbose"))
 
     def set_projectors(
         self, da=None, L1=None, L2=None, R1=None, R2=None, M1=None, M2=None, C=None
@@ -401,6 +447,9 @@ class TimePropagator:
                 )
             else:
                 self.ssc = setup_CCStatesContainerMemorySaver_from_dalton(da)
+
+        s = f"\n - Set projectors"
+        self.log(s)
 
     def setup_ground_state(self):
         """set ground state and TD methods"""
@@ -436,6 +485,9 @@ class TimePropagator:
             y0 = np.identity(len(self.C)).ravel()
         self.set_initial_state(y0)
 
+        s = f'\n - Setup {self.inputs("method")} ground state'
+        self.log(s)
+
     def setup_initial_state(self, state_number=0):
         """state_number : int"""
         if hasattr(self, "ssc") and self.inputs("method")[:2] == "ci":
@@ -445,11 +497,28 @@ class TimePropagator:
         else:
             raise NotImplementedError
 
+        s = f'\n - Setup {self.inputs("method")} ground state'
+        self.log(s)
+
     def set_initial_state(self, initial_state):
         self.y0 = initial_state
 
-    def setup_plane_wave_integrals(self, pwi_program="molcas"):
-        if pwi_program == "molcas":
+        s = f"\n - Set initial state"
+        self.log(s)
+
+    def setup_plane_wave_integrals(self, PWI_program=None):
+        if PWI_program is not None:
+            self.inputs.set("PWI_program", PWI_program)
+
+        implemented_programs = ["molcas"]
+
+        s = f"plane wave integral setup is not implemented with {self.inputs('PWI_program')}"
+        assert self.inputs("PWI_program") in implemented_programs
+
+        program = self.inputs("PWI_program")
+
+
+        if program == "molcas":
             pulse_inputs = [self.inputs(el) for el in self.inputs("pulses")]
             integrals, index_mapping = setup_plane_wave_integrals_from_molcas(
                 pulse_inputs,
@@ -462,6 +531,9 @@ class TimePropagator:
             )
 
         self.set_plane_wave_integrals(integrals, index_mapping)
+
+        s = f"\n - Setup plane wave integrals using {program}"
+        self.log(s)
 
     def set_plane_wave_integrals(self, integrals, index_mapping):
         """
@@ -497,6 +569,9 @@ class TimePropagator:
             )
         self.pwi.change_basis()
 
+        s = f"\n - Set plane wave integrals"
+        self.log(s)
+
     def setup_pulses(self):
         pulse_inputs = []
         for el in self.inputs("pulses"):
@@ -509,11 +584,31 @@ class TimePropagator:
         self.pulses = pulses
 
     def build(self, integrator=None, **integrator_params):
+        compute_projectors = bool(
+            self.inputs("sample_EOM_projectors")
+            + self.inputs("sample_EOM2_projectors")
+            + self.inputs("sample_LR_projectors")
+            + self.inputs("sample_CI_projectors")
+        )
+
+        if not hasattr(self, "QS"):
+            self.setup_quantum_system()
+        if not hasattr(self, "y0"):
+            self.setup_ground_state()
+        if (compute_projectors) and (not hasattr(self, "ssc")):
+            self.setup_projectors()
+
         self.build_hamiltonian()
         self.build_integrator(integrator, **integrator_params)
         self.build_samples()
 
+        s = f"\n - Building TimePropagator ..."
+        self.log(s)
+
     def build_hamiltonian(self):
+        s = f"\n - Building Hamiltonian"
+        self.log(s)
+
         if not hasattr(self, "pulses"):
             self.setup_pulses()
 
@@ -549,6 +644,8 @@ class TimePropagator:
         self.QS.set_time_evolution_operator(operators)
 
     def build_integrator(self, integrator=None, **integrator_params):
+        s = f"\n - Building integrator"
+        self.log(s)
 
         self.tdcc = self.TDCC(self.QS)
 
@@ -557,7 +654,7 @@ class TimePropagator:
         integrator = self.inputs("integrator")
 
         if hasattr(self, "samples"):
-            t0 = np.max(self.samples["time_points"]) + self.inputs("dt")
+            t0 = np.max(self.samples["time_points"]) + self.inputs("time_step")
         else:
             t0 = self.inputs("initial_time")
 
@@ -571,8 +668,11 @@ class TimePropagator:
         self.r.set_initial_value(self.y0, t0)
 
     def build_samples(self, samples=None):
+        s = f"\n - Building samples"
+        self.log(s)
+
         total_time = self.inputs("final_time") - self.inputs("initial_time")
-        self.num_steps = int(total_time / self.inputs("dt")) + 1
+        self.num_steps = int(total_time / self.inputs("time_step")) + 1
         if not hasattr(self, "samples"):
             self.setup_samples()
         else:
@@ -722,10 +822,22 @@ class TimePropagator:
 
         self.ssc.R0 = compute_R0(self.ssc)
 
+    def checkpoint(self):
+        if self.inputs("checkpoint_unit") == "iterations":
+            if (not self.iter % self.inputs("checkpoint")) and (self.iter > 0):
+                np.savez(f"tp_ckpt_{self.iter}", **self.get_output())
+
+        if self.inputs("checkpoint_unit") == "hours":
+            t = time.time() / 3600
+            if t - self.ckpt_sys_time > self.inpits("checkpoint"):
+                np.savez(f"tp_ckpt_{self.iter}", **self.get_output())
+                self.ckpt_sys_time = time.time() / 3600
+
     def get_output(self):
         output = {
             "samples": self.samples,
             "inputs": self.inputs.inputs,
+            "log": self._log,
             "arrays": {},
             "misc": {},
         }
@@ -759,15 +871,19 @@ class TimePropagator:
             self.iter = 0
 
         i0 = self.iter
-
         f0 = int(self.num_steps)
         time_points = self.samples["time_points"]
 
-        if self.inputs("verbose"):
-            print("Total number of simulation iterations: ", len(time_points))
-            print("Initial step: ", i0)
-            print("Final step: ", f0)
-            print("Total number of run iterations: ", f0 - i0)
+        s = f"\n - Starting time propagation ..."
+        s += f"\nTotal number of simulation iterations: {len(time_points)}"
+        s += f"\nInitial time step: {i0}"
+        s += f"\nFinal time step: {i0}"
+        s += f"\nTotal number of run iterations: {f0 - i0}"
+        self.log(s, self.inputs("verbose"))
+
+        self.ckpt_sys_time = time.time() / 3600
+
+        sys_time0 = time.time()
 
         for i_, _t in tqdm.tqdm(enumerate(time_points[i0:f0])):
             # if not i%10:
@@ -864,19 +980,28 @@ class TimePropagator:
                         self.r.t, rho_qp, self.pulses, self.pwi
                     )
 
-            self.r.integrate(self.r.t + self.inputs("dt"))
+            self.r.integrate(self.r.t + self.inputs("time_step"))
             if not self.r.successful():
                 break
 
             self.iter += 1
 
+            # if self.inputs("checkpoint"):
+            #    if (not i % self.inputs("checkpoint")) and (i > 0):
+            #        np.savez(f"time_propagator_checkpoint_{i}", **self.get_output())
+
             if self.inputs("checkpoint"):
-                if (not i % self.inputs("checkpoint")) and (i > 0):
-                    np.savez(f"time_propagator_checkpoint_{i}", **self.get_output())
+                self.checkpoint()
 
         if self.inputs("sample_laser_pulse"):
             self.samples["laser_pulse"][:, :] = self.pulses.pulses(
                 self.samples["time_points"]
             )
+
+        sys_time1 = time.time()
+
+        s = f"\n - Time propagation finished"
+        s += f"\n - Run time: {sys_time1-sys_time0} seconds"
+        self.log(s, self.inputs("verbose"))
 
         return self.get_output()
