@@ -78,7 +78,7 @@ class gaussian_delta_pulse:
 
 
 class zero_pulse(Laser):
-    def __init__(self, field_strength, omega, tprime, phase=0.0, t0=0.0, **kwargs):
+    def __init__(self, **kwargs):
         self.t0 = t0
 
     def _phase(self, t):
@@ -773,6 +773,32 @@ class sine_square_derivative(Laser):
             * np.heaviside(self.tprime - dt, 1.0)
             * np.cos(self.omega * dt + self._phase(dt))
             * self.field_strength
+        )
+        return pulse
+
+
+class sin_sin2(Laser):
+    def __init__(self, amplitude, omega, ncycles, phase=0.0, t0=0.0, **kwargs):
+        self.amplitude = amplitude
+        self.omega = omega
+        self.tprime = 2 * ncycles * np.pi / omega
+        self.phase = phase
+        self.t0 = t0
+
+    def _phase(self, t):
+        if callable(self.phase):
+            return self.phase(t)
+        else:
+            return self.phase
+
+    def __call__(self, t):
+        dt = t - self.t0
+        pulse = (
+            (np.sin(np.pi * dt / self.tprime) ** 2)
+            * np.heaviside(dt, 1.0)
+            * np.heaviside(self.tprime - dt, 1.0)
+            * np.sin(self.omega * dt + self._phase(dt))
+            * self.amplitude
         )
         return pulse
 
