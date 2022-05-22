@@ -73,7 +73,12 @@ class TimePropagator:
             if (type(inputs) == np.lib.npyio.NpzFile) or (
                 type(inputs) == dict and "inputs" in inputs.keys()
             ):
-                self.inputs.set_from_dict(dict((inputs["inputs"]).item()))
+                input_dict = (
+                    inputs["inputs"]
+                    if type(inputs["inputs"]) == dict
+                    else inputs["inputs"].item()
+                )
+                self.inputs.set_from_dict(input_dict)
                 init_from_output = True
 
             elif type(inputs) == dict:
@@ -215,23 +220,34 @@ class TimePropagator:
             print(s)
 
     def init_from_output(self, output):
-        samples = dict((output["samples"]).item())
-        self.set_samples(samples)
+        samples = (
+            output["samples"]
+            if type(output["samples"]) == dict
+            else output["samples"].item()
+        )
 
-        arrays = output["arrays"].item()
+        arrays = (
+            output["arrays"]
+            if type(output["arrays"]) == dict
+            else output["arrays"].item()
+        )
+
+        misc = output["misc"] if type(output["misc"]) == dict else output["misc"].item()
+
+        log = output["log"] if type(output["log"]) == str else output["log"].item()
+
+        self._log = log
+        s = "\n - Initiated from a previous run."
+        self.log(s)
+
+        self.set_samples(samples)
 
         s = "state vector must have been stored to initiale from previous run"
         assert "state" in arrays, s
 
         self.set_initial_state(arrays["state"])
 
-        misc = output["misc"].item()
         self.iter = misc["iter"]
-
-        self._log = output["log"].item()
-
-        s = "\n - Initiated from a previous run."
-        self.log(s)
 
     def set_input(self, key, value):
         self.inputs.set(key, value)
