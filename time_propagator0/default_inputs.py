@@ -37,5 +37,5 @@ default_inputs = {
     "sample_general_response": False,
     "reference_program": "pyscf",
     "EOMCC_program": "dalton",
-    "PWI_program":'molcas',
+    "PWI_program": "molcas",
 }
