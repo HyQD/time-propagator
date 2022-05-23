@@ -58,7 +58,8 @@ def transient_dipole_spectrum_de(a, induced_dipole=True):
     E = arrays.get_symmetrized_3D(E0)
 
     # fourier transform
-    fftransform = FFTransform(t, inputs("dt"))
+    time_step = inputs("time_step") if inputs.has_key("time_step") else inputs("dt")
+    fftransform = FFTransform(t, time_step)
 
     d_tilde = fftransform.transform_3D(d)
     E_tilde_conj = fftransform.transform_3D(E).conj()
@@ -88,7 +89,8 @@ def transient_dipole_spectrum_pia(a):
     A = arrays.get_symmetrized_3D(A0)
 
     # fourier transform
-    fftransform = FFTransform(t, inputs("dt"))
+    time_step = inputs("time_step") if inputs.has_key("time_step") else inputs("dt")
+    fftransform = FFTransform(t, time_step)
 
     freq = fftransform.freq
 
@@ -117,7 +119,8 @@ def transient_plane_wave_spectrum(a):
     t = arrays.get_symmetrized_time()
 
     # fourier transform
-    fftransform = FFTransform(t, inputs("dt"))
+    time_step = inputs("time_step") if inputs.has_key("time_step") else inputs("dt")
+    fftransform = FFTransform(t, time_step)
 
     freq = fftransform.freq
 
