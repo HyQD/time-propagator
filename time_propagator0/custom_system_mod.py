@@ -362,8 +362,6 @@ def construct_dalton_system_rhf(
     u = da.u  # slow implementation
     C = da.c.T
 
-    print(C)
-
     x = da.position(0)
     y = da.position(1)
     z = da.position(2)
