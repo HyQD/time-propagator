@@ -3,6 +3,7 @@ from scipy.integrate import complex_ode
 from gauss_integrator import GaussIntegrator
 import tqdm
 import time
+import copy
 
 from time_propagator0.stationary_states.compute_projectors import (
     compute_R0,
@@ -74,7 +75,7 @@ class TimePropagator:
                 type(inputs) == dict and "inputs" in inputs.keys()
             ):
                 input_dict = (
-                    inputs["inputs"]
+                    copy.deepcopy(inputs["inputs"])
                     if type(inputs["inputs"]) == dict
                     else inputs["inputs"].item()
                 )
@@ -82,7 +83,7 @@ class TimePropagator:
                 init_from_output = True
 
             elif type(inputs) == dict:
-                self.inputs.set_from_dict(inputs)
+                self.inputs.set_from_dict(copy.deepcopy(inputs))
 
         self.inputs.set_from_dict(kwargs)
 
@@ -221,20 +222,28 @@ class TimePropagator:
 
     def init_from_output(self, output):
         samples = (
-            output["samples"]
+            copy.deepcopy(output["samples"])
             if type(output["samples"]) == dict
             else output["samples"].item()
         )
 
         arrays = (
-            output["arrays"]
+            copy.deepcopy(output["arrays"])
             if type(output["arrays"]) == dict
             else output["arrays"].item()
         )
 
-        misc = output["misc"] if type(output["misc"]) == dict else output["misc"].item()
+        misc = (
+            copy.deepcopy(output["misc"])
+            if type(output["misc"]) == dict
+            else output["misc"].item()
+        )
 
-        log = output["log"] if type(output["log"]) == str else output["log"].item()
+        log = (
+            copy.deepcopy(output["log"])
+            if type(output["log"]) == str
+            else output["log"].item()
+        )
 
         self._log = log
         s = "\n - Initiated from a previous run."
