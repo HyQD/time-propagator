@@ -50,15 +50,14 @@ class time_dependent_phase:
 
 ### delta pulses #########################################
 class discrete_delta_pulse:
-    def __init__(self, field_strength, dt, **kwargs):
+    def __init__(self, field_strength, dt, t0=0.0, **kwargs):
         self.field_strength = field_strength
-        self.dt = dt
+        self.dt = dt-dt*1e-12
+        self.t0 = t0
 
     def __call__(self, t):
-        if t < self.dt:
-            return self.field_strength
-        else:
-            return 0
+        dt = t-self.t0
+        return self.field_strength*np.heaviside(self.dt-dt,0.0)*np.heaviside(self.dt+dt,0.0)
 
 
 class gaussian_delta_pulse:
