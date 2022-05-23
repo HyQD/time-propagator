@@ -44,14 +44,14 @@ inputs = {
     "charge": 0,  # total charge of the molecule
     "gauge": "length",  #'length' or 'velocity'
     "laser_approx": "dipole",  #'dipole' or 'plane_wave'
-    "dt": 1e-1,  # time step
+    "time_step": 1e-1,  # time step
     "initial_time": 0.0,  # initial time of simulation
     "final_time": 10.0,  # final time of simulation (last time step)
-    "integrator": "GaussIntegrator",  # name of integrator to use (in scipy complex_ode)
+    "integrator": "GaussIntegrator",  # 'GaussIntegrator' or 'vode'
     "integrator_params": {
         "s": 3,  # parameters for the integrator. Details depends
         "eps": 1e-10,
-    },  # on the choice of integrator
+    },  # dict, keys depends on the choice of integrator
     "quadratic_terms": True,  # include Am.Am terms in the Hamiltonian. Only
     # relevant for velocity gauge
     "cross_terms": True,  # include Am.An (m!=n) terms in Hamiltonian. Only
@@ -61,6 +61,10 @@ inputs = {
     # relevant if setup_projectors() is called
     "verbose": False,  # printouts
     "checkpoint": 0,
+    "checkpoint_unit": 'iterations',   #'iterations' or 'hours'
+    "reference_program":'pyscf',    #   'pyscf' or 'dalton'
+    "EOMCC_program":'dalton',   # 'dalton'
+    "PWI_program":'molcas', # 'molcas'
     "sample_laser_pulse": False,  # sample the laser pulse (will sample the
     # pulse at origin if 'laser_approx':'plane_wave')
     "sample_energy": False,  # sample the expectation value of the
