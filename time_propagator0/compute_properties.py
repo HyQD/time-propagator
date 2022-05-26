@@ -21,7 +21,7 @@ def compute_expectation_value(tdcc, t, y, M):
     return ret
 
 
-def compute_CI_projectors(CISC, t, y):
+def compute_CI_projectors(tdcc, CISC, t, y):
     """CIStatesContainer object
     t : t amplitudes
     l : l amplitudes
@@ -30,7 +30,7 @@ def compute_CI_projectors(CISC, t, y):
     P = np.zeros(CISC.n_states)
 
     for n in np.arange(CISC.n_states):
-        P[n] = np.abs(self.tdcc.compute_overlap(t, CISC.C[:, n], y)) ** 2
+        P[n] = np.abs(tdcc.compute_overlap(t, CISC.C[:, n], y)) ** 2
 
     return P
 

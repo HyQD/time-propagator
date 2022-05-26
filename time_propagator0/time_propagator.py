@@ -25,6 +25,11 @@ from time_propagator0.field_interaction.construct_operators import (
     construct_cross_plane_wave_operators,
 )
 
+from time_propagator0.custom_system_mod import (
+    QuantumSystemValues,
+    construct_quantum_system,
+)
+
 from time_propagator0.inputs import Inputs
 
 from time_propagator0.utils import get_basis
@@ -34,6 +39,7 @@ from time_propagator0.compute_properties import (
     compute_conventional_EOM_projectors,
     compute_two_component_EOM_projectors,
     compute_LR_projectors,
+    compute_CI_projectors,
     compute_F,
 )
 
@@ -145,11 +151,20 @@ class TimePropagator:
             "cisdtq",
         ]
 
-        if init_from_output:
-            self.init_from_output(inputs)
-
         s = r"Computational method is not supported"
         assert self.inputs("method") in implemented_methods, s
+
+        from time_propagator0.logging import Logger, log_messages, style
+
+        self.logger = Logger(log_messages, style)
+
+        if not init_from_output:
+            self.logger.log(
+                self.inputs("print_level"), values=[self.inputs("method")], new_lines=0
+            )
+
+        if init_from_output:
+            self.init_from_output(inputs)
 
         if method == "rcc2":
             from coupled_cluster.rcc2 import RCC2 as CC
@@ -209,17 +224,6 @@ class TimePropagator:
         self.CC = CC
         self.TDCC = TDCC
 
-        if not hasattr(self, "_log"):
-            self._log = ""
-
-        s = f" - TimePropagator instance initiated with {self.inputs('method')} method."
-        self.log(s)
-
-    def log(self, s, printout=False):
-        self._log += s
-        if printout:
-            print(s)
-
     def init_from_output(self, output):
         samples = (
             copy.deepcopy(output["samples"])
@@ -245,9 +249,9 @@ class TimePropagator:
             else output["log"].item()
         )
 
-        self._log = log
-        s = "\n - Initiated from a previous run."
-        self.log(s)
+        self.logger.set_log(log)
+
+        self.logger.log(self.inputs("print_level"))
 
         self.set_samples(samples)
 
@@ -261,15 +265,13 @@ class TimePropagator:
     def set_input(self, key, value):
         self.inputs.set(key, value)
 
-        s = "\nAdded input {key}:{value}"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
     def add_pulse(self, name, pulse_inputs):
         (self.inputs.inputs["pulses"]).append(name)
         self.inputs.set(name, pulse_inputs)
 
-        s = "\nAdded pulse {name}"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
     def setup_quantum_system(
         self, reference_program=None, molecule=None, charge=None, basis=None
@@ -291,89 +293,32 @@ class TimePropagator:
         molecule = self.inputs("molecule")
         basis = self.inputs("basis")
         charge = self.inputs("charge")
-
         program = self.inputs("reference_program")
 
         if program == "pyscf":
-            if (self.correlated) and (self.restricted):
-                from time_propagator0.custom_system_mod import (
-                    construct_pyscf_system_rhf,
-                )
+            from time_propagator0 import run_pyscf_rhf
 
-                QS, C = construct_pyscf_system_rhf(
-                    molecule=molecule,
-                    basis=get_basis(basis, "pyscf"),
-                    charge=charge,
-                    add_spin=False,
-                    anti_symmetrize=False,
-                )
-
-            elif (not self.correlated) and (self.restricted):
-                from time_propagator0.custom_system_mod import (
-                    construct_pyscf_system_rhf,
-                )
-
-                QS, C = construct_pyscf_system_rhf(
-                    molecule=molecule,
-                    basis=get_basis(basis, "pyscf"),
-                    charge=charge,
-                    add_spin=False,
-                    anti_symmetrize=False,
-                )
-
-            elif (self.correlated) and (not self.restricted):
-                from time_propagator0.custom_system_mod import (
-                    construct_pyscf_system_rhf,
-                )
-
-                QS, C = construct_pyscf_system_rhf(
-                    molecule=molecule, basis=get_basis(basis, "pyscf"), charge=charge
-                )
+            qsv = QuantumSystemValues().set_pyscf_values_rhf(
+                run_pyscf_rhf(molecule, basis=basis, charge=charge)
+            )
         elif program == "dalton":
-            if (self.correlated) and (self.restricted):
-                from time_propagator0.custom_system_mod import (
-                    construct_dalton_system_rhf,
-                )
+            from time_propagator0 import run_dalton_rhf
 
-                QS, C = construct_dalton_system_rhf(
-                    molecule=molecule,
-                    basis=get_basis(basis, "dalton"),
-                    charge=charge,
-                    add_spin=False,
-                    anti_symmetrize=False,
-                    custom_basis=self.inputs("custom_basis"),
-                )
+            qsv = QuantumSystemValues().set_dalton_values_rhf(
+                run_dalton_rhf(molecule, basis=basis, charge=charge)
+            )
 
-            elif (not self.correlated) and (self.restricted):
-                from time_propagator0.custom_system_mod import (
-                    construct_dalton_system_rhf,
-                )
+        if (self.correlated) and (not self.restricted):
+            QS = construct_quantum_system(qsv, add_spin=True, anti_symmetrize=True)
+        else:
+            QS = construct_quantum_system(qsv)
 
-                QS, C = construct_dalton_system_rhf(
-                    molecule=molecule,
-                    basis=get_basis(basis, "dalton"),
-                    charge=charge,
-                    add_spin=False,
-                    anti_symmetrize=False,
-                    custom_basis=self.inputs("custom_basis"),
-                )
+        self.logger.log(self.inputs("print_level"), values=[program])
+        self.logger.log(
+            self.inputs("print_level"), name_ext="hf_energy", values=[qsv.hf_energy]
+        )
 
-            elif (self.correlated) and (not self.restricted):
-                from time_propagator0.custom_system_mod import (
-                    construct_dalton_system_rhf,
-                )
-
-                QS, C = construct_dalton_system_rhf(
-                    molecule=molecule,
-                    basis=get_basis(basis, "dalton"),
-                    charge=charge,
-                    custom_basis=self.inputs("custom_basis"),
-                )
-
-        self.set_quantum_system(QS, C)
-
-        s = f'\n - Setup quantum system using {self.inputs("reference_program")}'
-        self.log(s)
+        self.set_quantum_system(QS, qsv.C)
 
     def set_quantum_system(self, QS, C=None):
         """QS: QuantumSystem
@@ -382,8 +327,7 @@ class TimePropagator:
         if C is not None:
             self.C = C
 
-        s = "\n - Set quantum system"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
     def setup_projectors(self, EOMCC_program=None):
         """EOMCC_program: str"""
@@ -402,6 +346,8 @@ class TimePropagator:
         s = r'projectors setup is not implemented for {self.inputs("method")}'
         assert self.inputs("method") in implemented_methods
 
+        self.logger.log(self.inputs("print_level"), values=[self.inputs("method")])
+
         if self.inputs("method")[:2] == "ci":
             cc_kwargs = dict(verbose=False)
             cc = self.CC(self.QS, **cc_kwargs)
@@ -410,9 +356,7 @@ class TimePropagator:
             cc.compute_ground_state(k=n)
 
             self.set_projectors(C=cc.C)
-
-            s = f'\n - Setup {self.inputs("method")} projectors'
-            self.log(s)
+            self.stationary_state_energies = cc.energies
 
         else:
             if EOMCC_program is not None:
@@ -435,14 +379,23 @@ class TimePropagator:
                     custom_basis=self.inputs("custom_basis"),
                 )
 
+                # GS_energy = da.state_energies[0]
+                # ES_energies = (da.state_energies - da.state_energies[0])[1:]
+                self.stationary_state_energies = da.state_energies
+
+                self.logger.log(
+                    self.inputs("print_level"),
+                    name_ext="EOMCC_program",
+                    values=[self.inputs("EOMCC_program")],
+                )
+
                 self.set_projectors(da=da)
 
-                GS_energy = da.state_energies[0]
-                ES_energies = (da.state_energies - da.state_energies[0])[1:]
-                s = f"\n - Setup {self.inputs('method')} projectors using {self.inputs('EOMCC_program')}"
-                s += f"\n - Ground state energy: {GS_energy}"
-                s += f"\n - Excited state energies: {ES_energies}\n"
-                self.log(s, self.inputs("verbose"))
+        self.logger.log(
+            self.inputs("print_level"),
+            name_ext="energies",
+            values=[self.stationary_state_energies],
+        )
 
     def set_projectors(
         self, da=None, L1=None, L2=None, R1=None, R2=None, M1=None, M2=None, C=None
@@ -476,8 +429,7 @@ class TimePropagator:
             else:
                 self.ssc = setup_CCStatesContainerMemorySaver_from_dalton(da)
 
-        s = f"\n - Set projectors"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
     def setup_ground_state(self):
         """set ground state and TD methods"""
@@ -511,13 +463,15 @@ class TimePropagator:
             # )
             # y0 = self.cc.C.ravel()
             y0 = np.identity(len(self.C)).ravel()
-        self.set_initial_state(y0)
 
-        s = f'\n - Setup {self.inputs("method")} ground state'
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
+
+        self.set_initial_state(y0)
 
     def setup_initial_state(self, state_number=0):
         """state_number : int"""
+        self.logger.log(self.inputs("print_level"), values=[state_number])
+
         if hasattr(self, "ssc") and self.inputs("method")[:2] == "ci":
             self.set_initial_state(self.ssc.C[:, state_number])
         elif state_number == 0:
@@ -525,14 +479,10 @@ class TimePropagator:
         else:
             raise NotImplementedError
 
-        s = f'\n - Setup {self.inputs("method")} ground state'
-        self.log(s)
-
     def set_initial_state(self, initial_state):
         self.y0 = initial_state
 
-        s = f"\n - Set initial state"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
     def setup_plane_wave_integrals(self, PWI_program=None):
         if PWI_program is not None:
@@ -557,10 +507,9 @@ class TimePropagator:
                 custom_basis=self.inputs("custom_basis"),
             )
 
-        self.set_plane_wave_integrals(integrals, index_mapping)
+        self.logger.log(self.inputs("print_level"))
 
-        s = f"\n - Setup plane wave integrals using {program}"
-        self.log(s)
+        self.set_plane_wave_integrals(integrals, index_mapping)
 
     def set_plane_wave_integrals(self, integrals, index_mapping):
         """
@@ -574,10 +523,10 @@ class TimePropagator:
         sin(k_m.r): {'sin,m':i}
         cos(k_m.r).p: {'cosp,m':i}
         sin(k_m.r).p: {'sinp,m':i}
-        cos(2[k_m+k_n].r).p: {'cos+,mn':i}
-        sin(2[k_m+k_n].r).p: {'sin+,mn':i}
-        cos(2[k_m-k_n].r).p: {'cos-,mn':i}
-        sin(2[k_m-k_n].r).p: {'sin-,mn':i}
+        cos(2[k_m+k_n].r): {'cos+,mn':i}
+        sin(2[k_m+k_n].r): {'sin+,mn':i}
+        cos(2[k_m-k_n].r): {'cos-,mn':i}
+        sin(2[k_m-k_n].r): {'sin-,mn':i}
 
         cos(k_m.r) and sin(k_m.r) are only required if
         'sampling_kinetic_momentum'.
@@ -596,8 +545,7 @@ class TimePropagator:
             )
         self.pwi.change_basis()
 
-        s = f"\n - Set plane wave integrals"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
     def setup_pulses(self):
         pulse_inputs = []
@@ -606,11 +554,17 @@ class TimePropagator:
         pulses = setup_Pulses(pulse_inputs)
         self.set_pulses(pulses)
 
+        self.logger.log(self.inputs("print_level"))
+
     def set_pulses(self, pulses):
         """Pulses class"""
         self.pulses = pulses
 
+        self.logger.log(self.inputs("print_level"))
+
     def build(self, integrator=None, **integrator_params):
+        self.logger.log(self.inputs("print_level"))
+
         compute_projectors = bool(
             self.inputs("sample_EOM_projectors")
             + self.inputs("sample_EOM2_projectors")
@@ -624,17 +578,18 @@ class TimePropagator:
             self.setup_ground_state()
         if (compute_projectors) and (not hasattr(self, "ssc")):
             self.setup_projectors()
+        if (
+            self.inputs("laser_approx") == "plane_wave"
+            or self.inputs("sample_general_response")
+        ) and (not hasattr(self, "pwi")):
+            self.setup_plane_wave_integrals()
 
         self.build_hamiltonian()
         self.build_integrator(integrator, **integrator_params)
         self.build_samples()
 
-        s = f"\n - Building TimePropagator ..."
-        self.log(s)
-
     def build_hamiltonian(self):
-        s = f"\n - Building Hamiltonian"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
         if not hasattr(self, "pulses"):
             self.setup_pulses()
@@ -653,11 +608,6 @@ class TimePropagator:
                 if self.inputs("cross_terms"):
                     operators += construct_cross_dipole_operators(self.QS, self.pulses)
 
-        if self.inputs("laser_approx") == "plane_wave" or self.inputs(
-            "sample_general_response"
-        ):
-            self.setup_plane_wave_integrals()
-
         if self.inputs("laser_approx") == "plane_wave":
             operators = construct_linear_plane_wave_operators(self.pwi, self.pulses)
 
@@ -671,8 +621,7 @@ class TimePropagator:
         self.QS.set_time_evolution_operator(operators)
 
     def build_integrator(self, integrator=None, **integrator_params):
-        s = f"\n - Building integrator"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
         self.tdcc = self.TDCC(self.QS)
 
@@ -695,8 +644,7 @@ class TimePropagator:
         self.r.set_initial_value(self.y0, t0)
 
     def build_samples(self, samples=None):
-        s = f"\n - Building samples"
-        self.log(s)
+        self.logger.log(self.inputs("print_level"))
 
         total_time = self.inputs("final_time") - self.inputs("initial_time")
         self.num_steps = int(total_time / self.inputs("time_step")) + 1
@@ -860,11 +808,13 @@ class TimePropagator:
                 np.savez(f"tp_ckpt_{self.iter}", **self.get_output())
                 self.ckpt_sys_time = time.time() / 3600
 
+        self.logger.log(self.inputs("print_level"), values=[self.iter])
+
     def get_output(self):
         output = {
             "samples": self.samples,
             "inputs": self.inputs.inputs,
-            "log": self._log,
+            "log": self.logger._log,
             "arrays": {},
             "misc": {},
         }
@@ -901,18 +851,20 @@ class TimePropagator:
         f0 = int(self.num_steps)
         time_points = self.samples["time_points"]
 
-        s = f"\n - Starting time propagation ..."
-        s += f"\nTotal number of simulation iterations: {len(time_points)}"
-        s += f"\nInitial time step: {i0}"
-        s += f"\nFinal time step: {i0}"
-        s += f"\nTotal number of run iterations: {f0 - i0}"
-        self.log(s, self.inputs("verbose"))
+        self.logger.log(self.inputs("print_level"))
+        self.logger.log(self.inputs("print_level"), name_ext="init_step", values=[i0])
+        self.logger.log(self.inputs("print_level"), name_ext="final_step", values=[f0])
+        self.logger.log(
+            self.inputs("print_level"), name_ext="iterations", values=[f0 - i0]
+        )
 
         self.ckpt_sys_time = time.time() / 3600
 
         sys_time0 = time.time()
 
-        for i_, _t in tqdm.tqdm(enumerate(time_points[i0:f0])):
+        disable_tqdm = True if self.inputs("print_level") == 0 else False
+
+        for i_ in tqdm.tqdm(time_points[i0:f0], disable=disable_tqdm):
             # if not i%10:
             #    print (f'{i} / {self.num_steps}')
             i = self.iter
@@ -959,7 +911,7 @@ class TimePropagator:
             # CI projectors
             if self.inputs("sample_CI_projectors"):
                 self.samples["CI_projectors"][i, :] = compute_CI_projectors(
-                    self.ssc, self.r.t, self.r.y
+                    self.tdcc, self.ssc, self.r.t, self.r.y
                 )
 
             # AUTO CORRELATION
@@ -1027,8 +979,16 @@ class TimePropagator:
 
         sys_time1 = time.time()
 
-        s = f"\n - Time propagation finished"
-        s += f"\n - Run time: {sys_time1-sys_time0} seconds"
-        self.log(s, self.inputs("verbose"))
+        self.logger.log(
+            self.inputs("print_level"),
+            name_ext="finished",
+            values=[self.iter, self.r.successful()],
+        )
+
+        self.logger.log(
+            self.inputs("print_level"),
+            name_ext="run_time",
+            values=[sys_time1 - sys_time0],
+        )
 
         return self.get_output()

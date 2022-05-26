@@ -50,6 +50,16 @@ def get_atomic_symbols_from_str(molecule):
     return symbols
 
 
+def get_coords_from_str(molecule):
+    coords = []
+
+    atoms = molecule.split(";")
+    for el in atoms:
+        coords.append([el.split()[1], el.split()[2], el.split()[3]])
+
+    return coords
+
+
 def get_atomic_symbols(molecule):
     if molecule[-4:] == ".xyz":
         return get_atomic_symbols_from_xyz(molecule)

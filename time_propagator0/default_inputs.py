@@ -13,7 +13,7 @@ default_inputs = {
     "cross_terms": True,
     "charge": 0,
     "n_excited_states": 10,
-    "verbose": False,
+    "print_level": 1,
     "return_inputs": True,
     "checkpoint": 0,
     "checkpoint_unit": "iterations",

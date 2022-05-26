@@ -41,7 +41,7 @@ def compute_response_vectors_from_dalton(
     ccsd = dp.QCMethod(method)
     prop = dp.Property(response_vectors=True)
     prop.excitation_energies(states=n_excited_states)
-    result = dp.dalton.compute(mol, basis_set, ccsd, prop)
+    result = dp.dalton.compute(mol, basis_set, ccsd, prop, verbose=False)
 
     return dp.dalton.Arrays(result)
 
@@ -68,7 +68,7 @@ def compute_plane_wave_integrals_from_molcas(
     prop = dp.Property(vector_potential=True)
     prop.vector_potential(k_direction=list(k), wavelength=wavelength)
 
-    result = dp.molcas.compute(mol, basis_set, ccsd, prop)
+    result = dp.molcas.compute(mol, basis_set, ccsd, prop, verbose=False)
 
     return dp.molcas.Arrays(result)
 

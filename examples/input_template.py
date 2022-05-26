@@ -39,7 +39,6 @@ inputs = {
     # Either str or dict
     # If "custom_basis":False : BSE module is used )
     # Else: Format is {'pyscf':{'aug-cc-pvdz'}, 'dalton':{h:'aug-cc-pvdz'},li:'cc-pvdz'}} etc.
-    #
     "custom_basis": False,  # use custom basis set files (not yet functional)
     "charge": 0,  # total charge of the molecule
     "gauge": "length",  #'length' or 'velocity'
@@ -59,7 +58,7 @@ inputs = {
     # more than one pulse
     "n_excited_states": 10,  # number of excited CC or EOM-CC states. Only
     # relevant if setup_projectors() is called
-    "verbose": False,  # printouts
+    "print_level": 1,  # printouts
     "checkpoint": 0,
     "checkpoint_unit": 'iterations',   #'iterations' or 'hours'
     "reference_program":'pyscf',    #   'pyscf' or 'dalton'
