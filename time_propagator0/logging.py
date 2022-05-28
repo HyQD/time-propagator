@@ -15,6 +15,11 @@ log_messages = {
         "style": "a",
         "print_level": 6,
     },
+    "_init_from_output": {
+        "string": "TimePropagator instance initiated from an output.",
+        "style": "a",
+        "print_level": 6,
+    },
     "set_quantum_system": {
         "string": "Setting quantum system",
         "style": "b",
@@ -39,6 +44,11 @@ log_messages = {
         "string": "Setting pulses",
         "style": "b",
         "print_level": 6,
+    },
+    "add_pulse": {
+        "string": "Added pulse {0}",
+        "style": "c",
+        "print_level": 5,
     },
     "setup_quantum_system": {
         "string": "Setting up quantum system using {0}",

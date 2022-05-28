@@ -72,3 +72,40 @@ def get_basis(basis, program):
         return basis
     else:
         return basis[program]
+
+
+def inspect_inputs(inputs):
+    """determine if inputs argument is the output results of a simulation"""
+    if isinstance(inputs, dict) and all(
+        el in inputs.keys() for el in ["samples", "inputs", "arrays", "log", "misc"]
+    ):
+        return True
+    elif isinstance(inputs, str):
+        if inputs[-4:] == ".npz":
+            return True
+        elif inputs[-7:] == ".pickle":
+            return True
+    return False
+
+
+def cleanup_inputs(inputs):
+    if isinstance(inputs, np.lib.npyio.NpzFile) or isinstance(inputs, dict):
+        inputs = dearrayfy_inputs(inputs)
+    return inputs
+
+
+def dearrayfy_inputs(inputs):
+    inputs = dict(inputs)
+    elems = ["samples", "inputs", "arrays", "log", "misc"]
+    for el in elems:
+        if el in inputs.keys() and isinstance(inputs[el], np.ndarray):
+            inputs[el] = inputs[el].item()
+    return inputs
+
+
+def load_inputs(inputs_):
+    if inputs_[-4:] == ".npz":
+        inputs = np.load(inputs_, allow_pickle=True)
+        inputs = cleanup_inputs()
+
+    return cleanup_inputs(inputs)

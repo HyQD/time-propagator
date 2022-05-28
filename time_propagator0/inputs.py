@@ -4,7 +4,7 @@ import importlib
 
 ################################################################################
 class Inputs:
-    def __init__(self, a):
+    def __init__(self, a={}):
         """a: dict or list containing dicts"""
         if type(a) is dict:
             self.setup_dict(a)
@@ -39,9 +39,13 @@ class Inputs:
             if type(input_dict) == dict:
                 self.set_from_dict(input_dict)
 
+        return self
+
     def set_from_dict(self, input_dict):
         for key in input_dict:
             self.set(key, input_dict[key])
+
+        return self
 
     def set(self, key, value):
         self.inputs[key] = value
@@ -91,3 +95,55 @@ class Inputs:
     def __call__(self, key):
         """key: str"""
         return self.inputs[key]
+
+
+def load_inputs(inputs):
+    if isinstance(inputs, str):
+        if inputs[-4:] == ".py":
+            inputs = load_inputs_from_py(inputs)
+        elif inputs[-4:] == ".npz":
+            inputs = np.load(inputs, allow_pickle=True)
+        else:
+            try:
+                with open(inputs, "rb") as f:
+                    inputs = pickle.load(inputs)
+            except pickle.UnpicklingError:
+                pass
+
+    return cleanup_inputs(inputs)
+
+
+def load_inputs_from_py(file_name):
+    inputs = {}
+    input_module = importlib.import_module(file_name.replace(".py", ""))
+    input_attr_names = [el for el in dir(input_module) if not el.startswith("__")]
+    for el in input_attr_names:
+        input_dict = getattr(input_module, el)
+        if type(input_dict) == dict:
+            inputs = {**inputs, **input_dict}
+
+    return inputs
+
+
+def inspect_inputs(inputs):
+    """determine if inputs argument is the output results of a simulation"""
+    type_check = isinstance(inputs, dict)
+    init_from_output = all(
+        el in inputs.keys() for el in ["samples", "inputs", "arrays", "log", "misc"]
+    )
+    return (type_check, init_from_output)
+
+
+def cleanup_inputs(inputs):
+    if isinstance(inputs, np.lib.npyio.NpzFile) or isinstance(inputs, dict):
+        inputs = dearrayfy_inputs(inputs)
+    return inputs
+
+
+def dearrayfy_inputs(inputs):
+    inputs = dict(inputs)
+    elems = ["samples", "inputs", "arrays", "log", "misc"]
+    for el in elems:
+        if el in inputs.keys() and isinstance(inputs[el], np.ndarray):
+            inputs[el] = inputs[el].item()
+    return inputs

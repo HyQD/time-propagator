@@ -1,6 +1,6 @@
 from .time_propagator import TimePropagator
 
-from .inputs import Inputs
+from .inputs import Inputs, load_inputs, inspect_inputs
 
 from .utils import get_atomic_symbols, get_basis
 

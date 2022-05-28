@@ -42,7 +42,7 @@ class QuantumSystemValues:
         l = self.l
         self.u = mol.intor("int2e").reshape(l, l, l, l).transpose(0, 2, 1, 3)
         self.position = mol.intor("int1e_r").reshape(3, l, l)
-        self.momentum = mol.intor("int1e_ipovlp").reshape(3, l, l)
+        self.momentum = 1j * mol.intor("int1e_ipovlp").reshape(3, l, l)
 
         return self
 

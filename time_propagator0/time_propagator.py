@@ -30,7 +30,7 @@ from time_propagator0.custom_system_mod import (
     construct_quantum_system,
 )
 
-from time_propagator0.inputs import Inputs
+from time_propagator0.inputs import Inputs, load_inputs, inspect_inputs
 
 from time_propagator0.utils import get_basis
 
@@ -57,49 +57,38 @@ from time_propagator0.field_interaction.plane_wave_integrals_containers import (
     setup_plane_wave_integrals_from_molcas,
 )
 
+from time_propagator0.logging import Logger, log_messages, style
+
 
 class TimePropagator:
     def __init__(self, method=None, inputs=None, **kwargs):
         """inputs: str (input file name) or dict"""
-        # setup input parameters
-        self.inputs = Inputs({})
-        self.inputs.set_from_file("time_propagator0.default_inputs")
+        inputs = copy.deepcopy(inputs)
 
-        init_from_output = False
+        self.logger = Logger(log_messages, style)
 
-        if inputs is not None:
-            s = "inputs must be either str or dict"
-            assert (type(inputs) == str) or (type(inputs) == dict), s
+        self.inputs = Inputs().set_from_file("time_propagator0.default_inputs")
 
-            if type(inputs) == str and inputs[-3:] == ".py":
-                self.inputs.set_from_file(inputs)
+        inputs = load_inputs(inputs)
+        valid_type, init_from_output = inspect_inputs(inputs)
 
-            elif type(inputs) == str and inputs[-4:] == ".npz":
-                inputs = np.load(inputs, allow_pickle=True)
+        s = "Cannot convert inputs to internal dict format."
+        assert valid_type, s
 
-            if (type(inputs) == np.lib.npyio.NpzFile) or (
-                type(inputs) == dict and "inputs" in inputs.keys()
-            ):
-                input_dict = (
-                    copy.deepcopy(inputs["inputs"])
-                    if type(inputs["inputs"]) == dict
-                    else inputs["inputs"].item()
-                )
-                self.inputs.set_from_dict(input_dict)
-                init_from_output = True
-
-            elif type(inputs) == dict:
-                self.inputs.set_from_dict(copy.deepcopy(inputs))
+        if init_from_output:
+            self._init_from_output(inputs)
+        else:
+            self.inputs.set_from_dict(inputs)
 
         self.inputs.set_from_dict(kwargs)
 
-        if method is None:
+        if method is not None:
+            self.inputs.set("method", method)
+        else:
             s = "'method' parameter must be defined at initiation"
             assert self.inputs.has_key("method"), s
-        else:
-            self.inputs.set("method", method)
 
-        self.inputs.check_consistency()
+        # self.inputs.check_consistency()
 
         # defining calculation type
         corr_methods = [
@@ -151,20 +140,8 @@ class TimePropagator:
             "cisdtq",
         ]
 
-        s = r"Computational method is not supported"
+        s = f"Computational method {self.inputs('method')} is not supported."
         assert self.inputs("method") in implemented_methods, s
-
-        from time_propagator0.logging import Logger, log_messages, style
-
-        self.logger = Logger(log_messages, style)
-
-        if not init_from_output:
-            self.logger.log(
-                self.inputs("print_level"), values=[self.inputs("method")], new_lines=0
-            )
-
-        if init_from_output:
-            self.init_from_output(inputs)
 
         if method == "rcc2":
             from coupled_cluster.rcc2 import RCC2 as CC
@@ -198,7 +175,7 @@ class TimePropagator:
             from optimized_mp2.omp2 import TDOMP2 as TDCC
         elif method == "oaccd":
             from coupled_cluster.oaccd import OACCD as CC
-            from coupled_cluster.oaccd import TDOACCD as TDCC
+            from coupled_cluster.oaccd import OATDCCD as TDCC
         elif method == "cis":
             from configuration_interaction import CIS as CC
             from configuration_interaction import TDCIS as TDCC
@@ -224,36 +201,21 @@ class TimePropagator:
         self.CC = CC
         self.TDCC = TDCC
 
-    def init_from_output(self, output):
-        samples = (
-            copy.deepcopy(output["samples"])
-            if type(output["samples"]) == dict
-            else output["samples"].item()
-        )
+        if not init_from_output:
+            self.logger.log(
+                self.inputs("print_level"), values=[self.inputs("method")], new_lines=0
+            )
 
-        arrays = (
-            copy.deepcopy(output["arrays"])
-            if type(output["arrays"]) == dict
-            else output["arrays"].item()
-        )
-
-        misc = (
-            copy.deepcopy(output["misc"])
-            if type(output["misc"]) == dict
-            else output["misc"].item()
-        )
-
-        log = (
-            copy.deepcopy(output["log"])
-            if type(output["log"]) == str
-            else output["log"].item()
-        )
-
-        self.logger.set_log(log)
-
-        self.logger.log(self.inputs("print_level"))
+    def _init_from_output(self, inputs_):
+        samples = copy.deepcopy(inputs_["samples"])
+        inputs = copy.deepcopy(inputs_["inputs"])
+        arrays = copy.deepcopy(inputs_["arrays"])
+        misc = copy.deepcopy(inputs_["misc"])
+        log = copy.deepcopy(inputs_["log"])
 
         self.set_samples(samples)
+
+        self.inputs.set_from_dict(inputs)
 
         s = "state vector must have been stored to initiale from previous run"
         assert "state" in arrays, s
@@ -261,6 +223,9 @@ class TimePropagator:
         self.set_initial_state(arrays["state"])
 
         self.iter = misc["iter"]
+
+        self.logger.set_log(log)
+        self.logger.log(self.inputs("print_level"))
 
     def set_input(self, key, value):
         self.inputs.set(key, value)
@@ -271,7 +236,7 @@ class TimePropagator:
         (self.inputs.inputs["pulses"]).append(name)
         self.inputs.set(name, pulse_inputs)
 
-        self.logger.log(self.inputs("print_level"))
+        self.logger.log(self.inputs("print_level"), values=[name])
 
     def setup_quantum_system(
         self, reference_program=None, molecule=None, charge=None, basis=None
@@ -285,7 +250,6 @@ class TimePropagator:
             self.inputs.set("charge", charge)
         if reference_program is not None:
             self.inputs.set("reference_program", reference_program)
-
         implemented = ["pyscf", "dalton"]
         if not self.inputs("reference_program") in implemented:
             raise NotImplementedError
@@ -379,8 +343,6 @@ class TimePropagator:
                     custom_basis=self.inputs("custom_basis"),
                 )
 
-                # GS_energy = da.state_energies[0]
-                # ES_energies = (da.state_energies - da.state_energies[0])[1:]
                 self.stationary_state_energies = da.state_energies
 
                 self.logger.log(
@@ -458,10 +420,6 @@ class TimePropagator:
                 )
             y0 = self.cc.get_amplitudes(get_t_0=True).asarray()
         else:
-            # self.cc.compute_ground_state(
-            #    tol=ground_state_tolerance, change_system_basis=False
-            # )
-            # y0 = self.cc.C.ravel()
             y0 = np.identity(len(self.C)).ravel()
 
         self.logger.log(self.inputs("print_level"))
@@ -790,7 +748,6 @@ class TimePropagator:
                 t_kwargs=dict(tol=self.inputs("ground_state_tolerance")),
                 l_kwargs=dict(tol=self.inputs("ground_state_tolerance")),
             )
-            print("recomputed_GS")
         t, l = self.cc.get_amplitudes(get_t_0=True)
         self.ssc.t = t
         self.ssc.l = l
@@ -800,12 +757,16 @@ class TimePropagator:
     def checkpoint(self):
         if self.inputs("checkpoint_unit") == "iterations":
             if (not self.iter % self.inputs("checkpoint")) and (self.iter > 0):
-                np.savez(f"tp_ckpt_{self.iter}", **self.get_output())
+                np.savez(
+                    f"{self.inputs('checkpoint_name')}_{self.iter}", **self.get_output()
+                )
 
         if self.inputs("checkpoint_unit") == "hours":
             t = time.time() / 3600
             if t - self.ckpt_sys_time > self.inpits("checkpoint"):
-                np.savez(f"tp_ckpt_{self.iter}", **self.get_output())
+                np.savez(
+                    f"{self.inputs('checkpoint_name')}_{self.iter}", **self.get_output()
+                )
                 self.ckpt_sys_time = time.time() / 3600
 
         self.logger.log(self.inputs("print_level"), values=[self.iter])
@@ -864,7 +825,7 @@ class TimePropagator:
 
         disable_tqdm = True if self.inputs("print_level") == 0 else False
 
-        for i_ in tqdm.tqdm(time_points[i0:f0], disable=disable_tqdm):
+        for _ in tqdm.tqdm(time_points[i0:f0], disable=disable_tqdm):
             # if not i%10:
             #    print (f'{i} / {self.num_steps}')
             i = self.iter
