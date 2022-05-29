@@ -156,7 +156,7 @@ def load_inputs_from_py(file_name):
 
 def inspect_inputs(inputs):
     """determine if inputs argument is the output results of a simulation"""
-    type_check = isinstance(inputs, dict)
+    type_check = isinstance(inputs, dict) or inputs is None
     init_from_output = all(
         el in inputs.keys() for el in ["samples", "inputs", "arrays", "log", "misc"]
     )
