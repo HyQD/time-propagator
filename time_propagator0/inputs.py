@@ -1,119 +1,148 @@
 import numpy as np
 import importlib
+import pickle
+import warnings
 
 
-################################################################################
 class Inputs:
-    def __init__(self, a={}):
-        """a: dict or list containing dicts"""
-        if type(a) is dict:
-            self.setup_dict(a)
-        elif type(a) is list:
-            self.setup_list(a)
+    def __init__(self, inputs=None, input_requirements=None):
+        """inputs: dict, list containing dicts, or "*.py" filename as str"""
+        self.inputs = {}
+        self.inputs["pulses"] = []
 
-    def format(self, dict_):
-        if "pulses" in dict_.keys():
-            for el in dict_["pulses"]:
-                if el in dict_:
-                    if "polarization" in dict_[el]:
-                        dict_[el]["polarization"] = np.array(dict_[el]["polarization"])
-                    if "k_direction" in dict_[el]:
-                        dict_[el]["k_direction"] = np.array(dict_[el]["k_direction"])
-        return dict_
+        if isinstance(inputs, dict):
+            self.set_from_dict(inputs)
+        elif isinstance(inputs, list):
+            self.set_from_list(inputs)
+        elif isinstance(inputs, str):
+            self.set_from_file(inputs)
 
-    def setup_dict(self, a):
-        self.inputs = self.format(a)
+        self.input_requirements = input_requirements
 
-    def setup_list(self, a):
-        dict_ = a[0]
-        for i in np.arange(1, len(a)):
-            dict_ = {**dict_, **a[i]}
+    def set_from_list(self, list_):
+        for el in list_:
+            self.set_from_dict(el)
 
-        self.inputs = self.format(dict_)
+        return self
 
     def set_from_file(self, file_name):
-        input_module = importlib.import_module(file_name.replace(".py", ""))
-        input_attr_names = [el for el in dir(input_module) if not el.startswith("__")]
-        for el in input_attr_names:
-            input_dict = getattr(input_module, el)
-            if type(input_dict) == dict:
-                self.set_from_dict(input_dict)
+        input_dict = load_inputs_from_py(file_name)
+        self.set_from_dict(input_dict)
 
         return self
 
     def set_from_dict(self, input_dict):
+        if "pulses" in input_dict.keys():
+            self.set("pulses", input_dict["pulses"])
         for key in input_dict:
             self.set(key, input_dict[key])
 
         return self
 
     def set(self, key, value):
-        self.inputs[key] = value
-        self.inputs = self.format(self.inputs)
+        if self.input_requirements is not None:
+            self.check_validity(key, value)
+        self.inputs[key] = self.format(key, value)
+
+        return self
+
+    def format(self, key, value):
+        if key in self("pulses"):
+            return self.format_pulse(value)
+        else:
+            return self.format_input(key, value)
+
+    def format_input(self, key, input):
+        return input
+
+    def format_pulse(self, pulse):
+        pulse["polarization"] = np.array(pulse["polarization"])
+        if "k_direction" in pulse:
+            pulse["k_direction"] = np.array(pulse["k_direction"])
+        return pulse
+
+    def check_validity(self, key, value):
+        in_pulses = key in self("pulses")
+        in_inputs = key in self.input_requirements
+        if in_pulses and in_inputs:
+            raise ValueError(
+                f"You have used pulse name {k}, which is a valid input parameter."
+            )
+        if (not in_pulses) and (not in_inputs):
+            raise ValueError(f"{key} is not a valid input parameter.")
+        if in_inputs:
+            self.validate_input(key, value)
+        elif in_pulses:
+            self.validate_pulse(value)
+
+    def validate_pulse(self, pulse):
+        if not isinstance(pulse, dict):
+            raise TypeError(f"Pulse inputs must be of type dict.")
+        if not "pulse_class" in pulse:
+            raise KeyError(f"Pulse inputs must have key 'pulse_class'")
+        if not "polarization" in pulse:
+            raise KeyError(f"Pulse inputs must have key 'polarization'")
+        if "k_direction" in pulse:
+            eps = 1e-14
+            dot_uk = np.abs(
+                np.dot(np.array(pulse["polarization"]), np.array(pulse["k_direction"]))
+            )
+            if dot_uk > eps:
+                warnings.warns(
+                    f"Large dot product between the polarization vector \
+                                and propagation direction: (u,k)={dot_uk}"
+                )
+
+    def validate_input(self, key, value):
+        valid_types = self.input_requirements[key]["dtypes"]
+        if not type(value).__name__ in valid_types:
+            raise TypeError(f"{key} has to be one of the types {valid_types}")
 
     def has_key(self, key):
         return key in self.inputs.keys()
 
-    def check_consistency(self):
-        """method to check input consistency"""
-        # check that only harmonic pulses have complex polarization vectors
-
-        if self.has_key("pulses"):
-            for el in self.inputs["pulses"]:
-
-                # check that all pulses have input parameters
-                s = "pulse must have defined inputs"
-                assert self.has_key(el), s
-
-                pulse_inputs = self(el)
-
-                # check that pulses have defined polarization
-                s = "pulses must have defined polarization"
-                assert "polarization" in pulse_inputs.keys(), s
-
-                # check that only pulses with defined frequency has complex polarization
-                uI = (pulse_inputs["polarization"]).imag
-                if np.max(np.abs(uI)) > 1e-14:
-                    s = "only harmonic pulses can have complex polarization vectors"
-                    assert "omega" in self.inputs[el], s
-
-                if self("laser_approx") == "plane_wave":
-                    # check that pulses have defined k_direction if plane waves
-                    s = "plane waves need a propagation direction (k_direction)"
-                    assert "k_direction" in pulse_inputs.keys(), s
-
-                    # check that the k vector is orthogonal to the polarization vector
-                    u = pulse_inputs["polarization"]
-                    k = pulse_inputs["k_direction"]
-                    s = "k_direction must be orthogonal to the polarization"
-                    assert np.abs(np.dot(u, k)) < 1e-14, s
-
-                    # check that gauge is 'length' if plane waves
-                    s = "plane wave interaction is only implemented in velocity gauge"
-                    assert self("gauge") == "velocity", s
-
     def __call__(self, key):
-        """key: str"""
+        """Return an input value
+
+        key: str
+        """
         return self.inputs[key]
 
 
 def load_inputs(inputs):
+    """Return an input dict
+
+    Atempts to load all input dictionaries from dict, file (str) or a list
+    containing one or more dicts and file names. In case of list: If common
+    key names, elements with higher list index have presedence.
+    """
     if isinstance(inputs, str):
         if inputs[-4:] == ".py":
-            inputs = load_inputs_from_py(inputs)
+            inputs_ = load_inputs_from_py(inputs)
         elif inputs[-4:] == ".npz":
-            inputs = np.load(inputs, allow_pickle=True)
+            inputs_ = np.load(inputs, allow_pickle=True)
         else:
             try:
                 with open(inputs, "rb") as f:
-                    inputs = pickle.load(inputs)
+                    inputs_ = pickle.load(inputs)
             except pickle.UnpicklingError:
                 pass
+    elif isinstance(inputs, list):
+        inputs_ = {}
+        for el in inputs:
+            inputs_ = {**inputs_, **load_inputs(el)}
+    else:
+        inputs_ = inputs
 
-    return cleanup_inputs(inputs)
+    return cleanup_inputs(inputs_)
 
 
 def load_inputs_from_py(file_name):
+    """Return inputs dict
+    file_name : str
+
+    Collects all dicts from a .py file and generates an inputs dict
+    """
     inputs = {}
     input_module = importlib.import_module(file_name.replace(".py", ""))
     input_attr_names = [el for el in dir(input_module) if not el.startswith("__")]
