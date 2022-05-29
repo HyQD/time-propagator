@@ -76,14 +76,14 @@ class TimePropagator:
         ).set_from_file("time_propagator0.default_inputs")
 
         inputs = load_inputs(inputs)
-        valid_type, init_from_output = inspect_inputs(inputs)
+        valid_type, init_from_output, set_from_dict = inspect_inputs(inputs)
 
         if not valid_type:
             raise TypeError("Could not convert inputs to internal dict format.")
 
         if init_from_output:
             self._init_from_output(inputs)
-        else:
+        elif set_from_dict:
             self.inputs.set_from_dict(inputs)
 
         self.inputs.set_from_dict(kwargs)
