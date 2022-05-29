@@ -1,9 +1,11 @@
 import numpy as np
 from scipy.integrate import complex_ode
-from gauss_integrator import GaussIntegrator
 import tqdm
 import time
 import copy
+import importlib
+import operator
+
 
 from time_propagator0.stationary_states.compute_projectors import (
     compute_R0,
@@ -59,21 +61,25 @@ from time_propagator0.field_interaction.plane_wave_integrals_containers import (
 
 from time_propagator0.logging import Logger, log_messages, style
 
+from time_propagator0.lookup_tables import LookupTables
+
 
 class TimePropagator:
     def __init__(self, method=None, inputs=None, **kwargs):
-        """inputs: str (input file name) or dict"""
+        """method: str, inputs: str (input file name), dict or list"""
         inputs = copy.deepcopy(inputs)
 
         self.logger = Logger(log_messages, style)
-
-        self.inputs = Inputs().set_from_file("time_propagator0.default_inputs")
+        self.lookup = LookupTables()
+        self.inputs = Inputs(
+            input_requirements=self.lookup.input_requirements
+        ).set_from_file("time_propagator0.default_inputs")
 
         inputs = load_inputs(inputs)
         valid_type, init_from_output = inspect_inputs(inputs)
 
-        s = "Cannot convert inputs to internal dict format."
-        assert valid_type, s
+        if not valid_type:
+            raise TypeError("Could not convert inputs to internal dict format.")
 
         if init_from_output:
             self._init_from_output(inputs)
@@ -84,122 +90,24 @@ class TimePropagator:
 
         if method is not None:
             self.inputs.set("method", method)
-        else:
-            s = "'method' parameter must be defined at initiation"
-            assert self.inputs.has_key("method"), s
+        elif not self.inputs.has_key("method"):
+            raise TypeError("Parameter 'method' must be defined at initiation.")
 
-        # self.inputs.check_consistency()
+        method = self.inputs("method")
 
-        # defining calculation type
-        corr_methods = [
-            "rcc2",
-            "rccsd",
-            "romp2",
-            "roaccd",
-            "rcis",
-            "ccs",
-            "cc2",
-            "ccsd",
-            "omp2",
-            "oaccd",
-            "cis",
-            "cid",
-            "cisd",
-            "cidt",
-            "cisdt",
-            "cidtq",
-            "cisdtq",
-        ]
-        orb_adapt_methods = ["romp2", "roaccd", "omp2", "oaccd", "rhf"]
-        restricted_methods = ["rcc2", "rccsd", "romp2", "roaccd", "rhf", "rcis"]
+        if not method in self.lookup.methods:
+            raise ValueError(f"Computational method {method} is not supported.")
 
-        self.correlated = True if self.inputs("method") in corr_methods else False
-        self.orbital_adaptive = (
-            True if self.inputs("method") in orb_adapt_methods else False
-        )
-        self.restricted = True if self.inputs("method") in restricted_methods else False
+        self.restricted = self.lookup.methods[method]["restricted"]
+        self.correlated = self.lookup.methods[method]["correlated"]
+        self.orbital_adaptive = self.lookup.methods[method]["orbital_adaptive"]
 
-        implemented_methods = [
-            "rcc2",
-            "rccsd",
-            "romp2",
-            "roaccd",
-            "rhf",
-            "rcis",
-            "ccs",
-            "cc2",
-            "ccsd",
-            "omp2",
-            "oaccd",
-            "cis",
-            "cid",
-            "cisd",
-            "cidt",
-            "cisdt",
-            "cidtq",
-            "cisdtq",
-        ]
+        module = self.lookup.methods[method]["module"]
+        cc = self.lookup.methods[method]["cc"]
+        tdcc = self.lookup.methods[method]["tdcc"]
 
-        s = f"Computational method {self.inputs('method')} is not supported."
-        assert self.inputs("method") in implemented_methods, s
-
-        if method == "rcc2":
-            from coupled_cluster.rcc2 import RCC2 as CC
-            from coupled_cluster.rcc2 import TDRCC2 as TDCC
-        elif method == "rccsd":
-            from coupled_cluster.rccsd import RCCSD as CC
-            from coupled_cluster.rccsd import TDRCCSD as TDCC
-        elif method == "romp2":
-            from optimized_mp2.romp2 import ROMP2 as CC
-            from optimized_mp2.romp2 import TDROMP2 as TDCC
-        elif method == "roaccd":
-            from coupled_cluster.rccd import ROACCD as CC
-            from coupled_cluster.rccd import ROATDCCD as TDCC
-        elif method == "rhf":
-            from hartree_fock.rhf import RHF as CC
-            from hartree_fock.rhf import TDRHF as TDCC
-        elif method == "rcis":
-            from ci_singles import CIS as CC
-            from ci_singles import TDCIS as TDCC
-        elif method == "ccs":
-            from coupled_cluster.ccs import CCS as CC
-            from coupled_cluster.ccs import TDCCS as TDCC
-        elif method == "cc2":
-            from coupled_cluster.cc2 import CC2 as CC
-            from coupled_cluster.cc2 import TDCC2 as TDCC
-        elif method == "ccsd":
-            from coupled_cluster.ccsd import CCSD as CC
-            from coupled_cluster.ccsd import TDCCSD as TDCC
-        elif method == "omp2":
-            from optimized_mp2.omp2 import OMP2 as CC
-            from optimized_mp2.omp2 import TDOMP2 as TDCC
-        elif method == "oaccd":
-            from coupled_cluster.oaccd import OACCD as CC
-            from coupled_cluster.oaccd import OATDCCD as TDCC
-        elif method == "cis":
-            from configuration_interaction import CIS as CC
-            from configuration_interaction import TDCIS as TDCC
-        elif method == "cid":
-            from configuration_interaction import CID as CC
-            from configuration_interaction import TDCID as TDCC
-        elif method == "cisd":
-            from configuration_interaction import CISD as CC
-            from configuration_interaction import TDCISD as TDCC
-        elif method == "cidt":
-            from configuration_interaction import CIDT as CC
-            from configuration_interaction import TDCIDT as TDCC
-        elif method == "cisdt":
-            from configuration_interaction import CISDT as CC
-            from configuration_interaction import TDCISDT as TDCC
-        elif method == "cidtq":
-            from configuration_interaction import CIDTQ as CC
-            from configuration_interaction import TDCIDTQ as TDCC
-        elif method == "cisdtq":
-            from configuration_interaction import CISDTQ as CC
-            from configuration_interaction import TDCISDTQ as TDCC
-
-        self.CC = CC
-        self.TDCC = TDCC
+        self.CC = getattr(importlib.import_module(module), cc)
+        self.TDCC = getattr(importlib.import_module(module), tdcc)
 
         if not init_from_output:
             self.logger.log(
@@ -217,8 +125,10 @@ class TimePropagator:
 
         self.inputs.set_from_dict(inputs)
 
-        s = "state vector must have been stored to initiale from previous run"
-        assert "state" in arrays, s
+        if not "state" in arrays:
+            raise TypeError(
+                "state vector must have been stored in order to initiate from a previous run."
+            )
 
         self.set_initial_state(arrays["state"])
 
@@ -238,26 +148,19 @@ class TimePropagator:
 
         self.logger.log(self.inputs("print_level"), values=[name])
 
-    def setup_quantum_system(
-        self, reference_program=None, molecule=None, charge=None, basis=None
-    ):
+    def setup_quantum_system(self, reference_program=None):
         """reference_program: 'pyscf' ,'dalton',"""
-        if molecule is not None:
-            self.inputs.set("molecule", molecule)
-        if basis is not None:
-            self.inputs.set("basis", basis)
-        if charge is not None:
-            self.inputs.set("charge", charge)
         if reference_program is not None:
             self.inputs.set("reference_program", reference_program)
-        implemented = ["pyscf", "dalton"]
-        if not self.inputs("reference_program") in implemented:
-            raise NotImplementedError
+
+        program = self.inputs("reference_program")
+
+        if not program in self.lookup.reference_programs:
+            raise TypeError(f"Quantum system setup is not implemented with {program}.")
 
         molecule = self.inputs("molecule")
         basis = self.inputs("basis")
         charge = self.inputs("charge")
-        program = self.inputs("reference_program")
 
         if program == "pyscf":
             from time_propagator0 import run_pyscf_rhf
@@ -295,21 +198,6 @@ class TimePropagator:
 
     def setup_projectors(self, EOMCC_program=None):
         """EOMCC_program: str"""
-        implemented_methods = [
-            "rcc2",
-            "rccsd",
-            "cis",
-            "cid",
-            "cisd",
-            "cidt",
-            "cisdt",
-            "cidtq",
-            "cisdtq",
-        ]
-
-        s = r'projectors setup is not implemented for {self.inputs("method")}'
-        assert self.inputs("method") in implemented_methods
-
         self.logger.log(self.inputs("print_level"), values=[self.inputs("method")])
 
         if self.inputs("method")[:2] == "ci":
@@ -326,12 +214,12 @@ class TimePropagator:
             if EOMCC_program is not None:
                 self.inputs.set("EOMCC_program", EOMCC_program)
 
-            implemented_programs = ["dalton"]
-
             program = self.inputs("EOMCC_program")
 
-            s = f"CC projectors setup is not implemented with {self.inputs('EOMCC_program')}"
-            assert program in implemented_programs
+            if not program in self.lookup.EOMCC_programs:
+                raise TypeError(
+                    f"CC projectors setup is not implemented with {program}."
+                )
 
             if program == "dalton":
                 da = compute_response_vectors_from_dalton(
@@ -435,7 +323,11 @@ class TimePropagator:
         elif state_number == 0:
             self.setup_ground_state()
         else:
-            raise NotImplementedError
+            raise NotImplementedError(
+                "Setup of excited initial state is only \
+            implemented with CI methods, and only if stationary states \
+            have been calulated."
+            )
 
     def set_initial_state(self, initial_state):
         self.y0 = initial_state
@@ -446,12 +338,12 @@ class TimePropagator:
         if PWI_program is not None:
             self.inputs.set("PWI_program", PWI_program)
 
-        implemented_programs = ["molcas"]
-
-        s = f"plane wave integral setup is not implemented with {self.inputs('PWI_program')}"
-        assert self.inputs("PWI_program") in implemented_programs
-
         program = self.inputs("PWI_program")
+
+        if not program in self.lookup.PWI_programs:
+            raise TypeError(
+                f"Plane wave integral setup is not implemented with {program}."
+            )
 
         if program == "molcas":
             pulse_inputs = [self.inputs(el) for el in self.inputs("pulses")]
@@ -598,7 +490,12 @@ class TimePropagator:
             self.inputs.set("integrator_params", integrator_params)
         integrator_params = self.inputs("integrator_params")
 
-        self.r = complex_ode(self.tdcc).set_integrator(integrator, **integrator_params)
+        name = self.lookup.integrators[integrator]["name"]
+        module = self.lookup.integrators[integrator]["module"]
+        if module is not None:
+            getattr(importlib.import_module(module), name)
+
+        self.r = complex_ode(self.tdcc).set_integrator(name, **integrator_params)
         self.r.set_initial_value(self.y0, t0)
 
     def build_samples(self, samples=None):
@@ -655,73 +552,24 @@ class TimePropagator:
             C = C_tilde = None
         return C, C_tilde
 
+    def _get_dynamic_sample_dim(self, dim):
+        dim_ = list(dim)
+        n = len(dim)
+        for i in [j for j in range(n) if isinstance(dim_[j], str)]:
+            dim_[i] = operator.attrgetter(dim[i])(self)
+
+        return [self.num_steps] + dim_
+
     def setup_samples(self):
         samples = {}
-        # samples['time_points'] = np.linspace(0, self.tfinal, self.num_steps)
         samples["time_points"] = np.zeros(self.num_steps)
-        samples["laser_pulse"] = (
-            np.zeros((self.num_steps, 3)) if self.inputs("sample_laser_pulse") else None
-        )
-        samples["dipole_moment"] = (
-            np.zeros((self.num_steps, 3), dtype=np.complex128)
-            if self.inputs("sample_dipole_moment")
-            else None
-        )
-        samples["quadrupole_moment"] = (
-            np.zeros((self.num_steps, 6), dtype=np.complex128)
-            if self.inputs("sample_quadrupole_moment")
-            else None
-        )
-        samples["momentum"] = (
-            np.zeros((self.num_steps, 3), dtype=np.complex128)
-            if self.inputs("sample_momentum")
-            else None
-        )
-        samples["kinetic_momentum"] = (
-            np.zeros((self.num_steps, 3), dtype=np.complex128)
-            if self.inputs("sample_kinetic_momentum")
-            else None
-        )
-        samples["CI_projectors"] = (
-            np.zeros((self.num_steps, self.ssc.n_states))
-            if self.inputs("sample_CI_projectors")
-            else None
-        )
-        samples["EOM_projectors"] = (
-            np.zeros((self.num_steps, self.ssc.n_states))
-            if self.inputs("sample_EOM_projectors")
-            else None
-        )
-        samples["EOM2_projectors"] = (
-            np.zeros((self.num_steps, self.ssc.n_states))
-            if self.inputs("sample_EOM2_projectors")
-            else None
-        )
-        samples["LR_projectors"] = (
-            np.zeros((self.num_steps, self.ssc.n_states))
-            if self.inputs("sample_LR_projectors")
-            else None
-        )
-        samples["auto_correlation"] = (
-            np.zeros((self.num_steps, 3), dtype=np.complex128)
-            if self.inputs("sample_auto_correlation")
-            else None
-        )
-        samples["energy"] = (
-            np.zeros((self.num_steps, 3), dtype=np.complex128)
-            if self.inputs("sample_energy")
-            else None
-        )
-        samples["dipole_response"] = (
-            np.zeros((self.num_steps, 2, 2, self.pulses.n_pulses), dtype=np.complex128)
-            if self.inputs("sample_dipole_response")
-            else None
-        )
-        samples["general_response"] = (
-            np.zeros((self.num_steps, 2, 2, self.pulses.n_pulses), dtype=np.complex128)
-            if self.inputs("sample_general_response")
-            else None
-        )
+
+        sample_prop = self.lookup.sample_properties
+        for key, prop in zip(sample_prop, sample_prop.values()):
+            if not self.inputs(prop["sample_keyword"]):
+                continue
+            dim = self._get_dynamic_sample_dim(prop["dim"])
+            samples[key] = np.zeros(dim, dtype=prop["dtype"])
 
         self.set_samples(samples)
 
@@ -734,11 +582,10 @@ class TimePropagator:
             add_n_points = self.num_steps - n_time_points
 
             for el in self.samples.keys():
-                if not self.samples[el] is None:
-                    s = list((self.samples[el]).shape)
-                    s[0] = add_n_points
-                    ext = np.zeros(s)
-                    self.samples[el] = np.concatenate((self.samples[el], ext))
+                s = list((self.samples[el]).shape)
+                s[0] = add_n_points
+                ext = np.zeros(s)
+                self.samples[el] = np.concatenate((self.samples[el], ext))
 
     def setup_R0(self):
         if not hasattr(self, "cc"):
@@ -920,23 +767,17 @@ class TimePropagator:
                         self.r.t, rho_qp, self.pulses, self.pwi
                     )
 
+            if self.inputs("sample_laser_pulse"):
+                self.samples["laser_pulse"][i, :] = self.pulses.pulses(self.r.t)
+
             self.r.integrate(self.r.t + self.inputs("time_step"))
             if not self.r.successful():
                 break
 
             self.iter += 1
 
-            # if self.inputs("checkpoint"):
-            #    if (not i % self.inputs("checkpoint")) and (i > 0):
-            #        np.savez(f"time_propagator_checkpoint_{i}", **self.get_output())
-
             if self.inputs("checkpoint"):
                 self.checkpoint()
-
-        if self.inputs("sample_laser_pulse"):
-            self.samples["laser_pulse"][:, :] = self.pulses.pulses(
-                self.samples["time_points"]
-            )
 
         sys_time1 = time.time()
 
