@@ -6,7 +6,6 @@ default_inputs = {
     "time_step": 1e-1,
     "initial_time": 0.0,
     "final_time": 10.0,
-    "initial_state": None,
     "integrator": "GaussIntegrator",
     "integrator_module": None,
     "ground_state_tolerance": 1e-10,
