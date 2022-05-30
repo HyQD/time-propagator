@@ -129,6 +129,46 @@ def compute_LR_projectors(CCSC, t, l):
     return P
 
 
+def compute_R0(CCSC):
+    import numpy as np
+
+    R0 = np.empty(CCSC.n_states)
+    for n in range(CCSC.n_states):
+        t0, t1, t2, l1, l2 = CCSC.t[0][0], CCSC.t[1], CCSC.t[2], CCSC.l[0], CCSC.l[1]
+        R0[n] = compute_R0_(l1, l2, CCSC.R1[n], CCSC.R2[n])
+
+    return R0
+
+
+def compute_dipole_vector_potential(QS, pulses, t):
+    A = np.zeros((3, QS.l, QS.l), dtype=np.complex128)
+
+    for i in np.arange(3):
+        A[i, :, :] = np.eye(QS.l)
+
+    pulse = np.zeros(3)
+    for m in np.arange(pulses.n_pulses):
+        pulse += pulses.Ru[m, :] * pulses.Rg[m](t) + pulses.Iu[m, :] * pulses.Ig[m](t)
+
+    for i in np.arange(3):
+        A[i, :, :] *= pulse[i]
+
+    return A
+
+
+def compute_plane_wave_vector_potential(QS, pulses, pwi, t):
+    A = np.zeros((3, QS.l, QS.l), dtype=np.complex128)
+    for m in np.arange(pulses.n_pulses):
+        for i in np.arange(3):
+            A[i] += pulses.Ru[m, i] * (
+                pwi[f"cos,{m}"] * pulses.Rg[m](t) + pwi[f"sin,{m}"] * pulses.Ig[m](t)
+            )
+            A[i] += pulses.Iu[m, i] * (
+                pwi[f"cos,{m}"] * pulses.Ig[m](t) - pwi[f"sin,{m}"] * pulses.Rg[m](t)
+            )
+    return A
+
+
 def compute_F(t, rho_qp, pulses, pwi):
     """computes the D_{pq}Z_{pq,j,m}"""
     F = np.zeros((2, 2, pulses.n_pulses), dtype=np.complex128)
@@ -217,13 +257,13 @@ def compute_F(t, rho_qp, pulses, pwi):
 
 
 def compute_F_dipole(self, t, rho_qp):
-    p = self.time_transformed_operator(self.QS.momentum)
+    p = time_transformed_operator(QS.momentum)
 
     F = np.zeros((1, pulses.n_pulses), dtype=np.complex128)
     for m in np.arange(pulses.n_pulses):
-        Z = -1j * np.tensordot(p, self.polarization[m], axes=(0, 0))
+        Z = -1j * np.tensordot(p, polarization[m], axes=(0, 0))
         F[:, m] = np.einsum("qp,pq ->", rho_qp, Z)
-        if self.inputs("gauge") == "velocity":
-            F[:, m] += -1j * self.inputs("n_electrons") * self.Rpulses[m](t)
+        if inputs("gauge") == "velocity":
+            F[:, m] += -1j * inputs("n_electrons") * Rpulses[m](t)
 
     return F
