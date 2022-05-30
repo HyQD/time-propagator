@@ -46,6 +46,13 @@ class Inputs:
 
         return self
 
+    def set_custom_input(self, key, value):
+        if key in self.input_requirements:
+            raise ValueError(f"Custom input {key} has same name as a defalt input.")
+        self.inputs[key] = value
+
+        return self
+
     def format(self, key, value):
         if key in self("pulses"):
             return self.format_pulse(value)
