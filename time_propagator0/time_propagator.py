@@ -7,10 +7,6 @@ import importlib
 import operator
 
 
-from time_propagator0.stationary_states.compute_projectors import (
-    compute_R0,
-)
-
 from time_propagator0.stationary_states.stationary_states_containers import (
     CIStatesContainer,
     CCStatesContainerMemorySaver,
@@ -42,6 +38,9 @@ from time_propagator0.compute_properties import (
     compute_two_component_EOM_projectors,
     compute_LR_projectors,
     compute_CI_projectors,
+    compute_R0,
+    compute_dipole_vector_potential,
+    compute_plane_wave_vector_potential,
     compute_F,
 )
 
@@ -67,6 +66,28 @@ from time_propagator0.lookup_tables import LookupTables
 class TimePropagator:
     def __init__(self, method=None, inputs=None, **kwargs):
         """method: str, inputs: str (input file name), dict or list"""
+        self.system = None
+        self.system_values = None
+
+        self.cc = None
+        self.tdcc = None
+
+        self.pulses = None
+
+        self.states_container = None
+        self.pwi_container = None
+
+        self.iter = None
+        self.num_steps = None
+
+        self.y0 = None
+        self.C = None
+
+        self.one_body_sampling_operators = {}
+        self.two_body_sampling_operators = {}
+
+        self.samples = None
+
         inputs = copy.deepcopy(inputs)
 
         self.logger = Logger(log_messages, style)
@@ -165,32 +186,36 @@ class TimePropagator:
         if program == "pyscf":
             from time_propagator0 import run_pyscf_rhf
 
-            qsv = QuantumSystemValues().set_pyscf_values_rhf(
+            self.system_values = QuantumSystemValues().set_pyscf_values_rhf(
                 run_pyscf_rhf(molecule, basis=basis, charge=charge)
             )
         elif program == "dalton":
             from time_propagator0 import run_dalton_rhf
 
-            qsv = QuantumSystemValues().set_dalton_values_rhf(
+            self.system_values = QuantumSystemValues().set_dalton_values_rhf(
                 run_dalton_rhf(molecule, basis=basis, charge=charge)
             )
 
         if (self.correlated) and (not self.restricted):
-            QS = construct_quantum_system(qsv, add_spin=True, anti_symmetrize=True)
+            QS = construct_quantum_system(
+                self.system_values, add_spin=True, anti_symmetrize=True
+            )
         else:
-            QS = construct_quantum_system(qsv)
+            QS = construct_quantum_system(self.system_values)
 
         self.logger.log(self.inputs("print_level"), values=[program])
         self.logger.log(
-            self.inputs("print_level"), name_ext="hf_energy", values=[qsv.hf_energy]
+            self.inputs("print_level"),
+            name_ext="hf_energy",
+            values=[self.system_values.hf_energy],
         )
 
-        self.set_quantum_system(QS, qsv.C)
+        self.set_quantum_system(QS, self.system_values.C)
 
     def set_quantum_system(self, QS, C=None):
         """QS: QuantumSystem
         C: HF coefficient matrix"""
-        self.QS = QS
+        self.system = QS
         if C is not None:
             self.C = C
 
@@ -202,13 +227,13 @@ class TimePropagator:
 
         if self.inputs("method")[:2] == "ci":
             cc_kwargs = dict(verbose=False)
-            cc = self.CC(self.QS, **cc_kwargs)
+            cc = self.CC(self.system, **cc_kwargs)
 
             n = self.inputs("n_excited_states") + 1
             cc.compute_ground_state(k=n)
 
             self.set_projectors(C=cc.C)
-            self.stationary_state_energies = cc.energies
+            self.state_energies = cc.energies
 
         else:
             if EOMCC_program is not None:
@@ -231,7 +256,7 @@ class TimePropagator:
                     custom_basis=self.inputs("custom_basis"),
                 )
 
-                self.stationary_state_energies = da.state_energies
+                self.state_energies = da.state_energies
 
                 self.logger.log(
                     self.inputs("print_level"),
@@ -244,7 +269,7 @@ class TimePropagator:
         self.logger.log(
             self.inputs("print_level"),
             name_ext="energies",
-            values=[self.stationary_state_energies],
+            values=[self.state_energies],
         )
 
     def set_projectors(
@@ -266,18 +291,20 @@ class TimePropagator:
             or (M1 is not None)
             or (M2 is not None)
         ):
-            self.ssc = CCStatesContainer(L1, L2, R1, R2, M1, M2)
+            self.states_container = CCStatesContainer(L1, L2, R1, R2, M1, M2)
 
         elif C is not None:
-            self.ssc = CIStatesContainer(C)
+            self.states_container = CIStatesContainer(C)
 
         elif da is not None:
             if self.inputs("load_all_response_vectors"):
-                self.ssc = setup_CCStatesContainer_from_dalton(
+                self.states_container = setup_CCStatesContainer_from_dalton(
                     da, self.inputs("sample_LR_projectors")
                 )
             else:
-                self.ssc = setup_CCStatesContainerMemorySaver_from_dalton(da)
+                self.states_container = setup_CCStatesContainerMemorySaver_from_dalton(
+                    da
+                )
 
         self.logger.log(self.inputs("print_level"))
 
@@ -285,12 +312,12 @@ class TimePropagator:
         """set ground state and TD methods"""
 
         cc_kwargs = dict(verbose=False)
-        self.cc = self.CC(self.QS, **cc_kwargs)
+        self.cc = self.CC(self.system, **cc_kwargs)
 
         ground_state_tolerance = self.inputs("ground_state_tolerance")
 
         if self.inputs("method") == "rcis":
-            y0 = np.zeros(1 + self.QS.m * self.QS.n, dtype=np.complex128)
+            y0 = np.zeros(1 + self.system.m * self.system.n, dtype=np.complex128)
             y0[0] = 1.0
         elif self.inputs("method")[:2] == "ci":
             self.cc.compute_ground_state(k=1)
@@ -318,8 +345,8 @@ class TimePropagator:
         """state_number : int"""
         self.logger.log(self.inputs("print_level"), values=[state_number])
 
-        if hasattr(self, "ssc") and self.inputs("method")[:2] == "ci":
-            self.set_initial_state(self.ssc.C[:, state_number])
+        if self.states_container is not None and self.inputs("method")[:2] == "ci":
+            self.set_initial_state(self.states_container.C[:, state_number])
         elif state_number == 0:
             self.setup_ground_state()
         else:
@@ -386,14 +413,14 @@ class TimePropagator:
         if 'cross_terms'.
         """
         if self.orbital_adaptive:
-            self.pwi = IntegralContainerOrbitalAdaptive(
+            self.pwi_container = IntegralContainerOrbitalAdaptive(
                 integrals, index_mapping, C=self.C, C_tilde=self.C.conj().T
             )
         else:
-            self.pwi = IntegralContainerFixedOrbitals(
+            self.pwi_container = IntegralContainerFixedOrbitals(
                 integrals, index_mapping, C=self.C, C_tilde=self.C.conj().T
             )
-        self.pwi.change_basis()
+        self.pwi_container.change_basis()
 
         self.logger.log(self.inputs("print_level"))
 
@@ -422,78 +449,115 @@ class TimePropagator:
             + self.inputs("sample_CI_projectors")
         )
 
-        if not hasattr(self, "QS"):
+        if self.system is None:
             self.setup_quantum_system()
-        if not hasattr(self, "y0"):
+        if self.y0 is None:
             self.setup_ground_state()
-        if (compute_projectors) and (not hasattr(self, "ssc")):
+        if (compute_projectors) and (self.states_container is None):
             self.setup_projectors()
         if (
             self.inputs("laser_approx") == "plane_wave"
             or self.inputs("sample_general_response")
-        ) and (not hasattr(self, "pwi")):
+        ) and (self.pwi_container is None):
             self.setup_plane_wave_integrals()
 
         self.build_hamiltonian()
         self.build_integrator(integrator, **integrator_params)
         self.build_samples()
+        self.build_default_one_body_sampling_operators()
+
+    def set_custom_one_body_sampling_operator(self, name, operator, change_basis=False):
+        if not (isinstance(operator, np.ndarray) or isinstance(operator, np.ndarray)):
+            raise TypeError(f"Operator must be of type numpy.ndarray or Operator")
+        if self.samples is None:
+            raise TypeError(
+                f"Custom sampling operators can only be set after calling build()."
+            )
+        self.inputs.set_custom_input(f"sample_{name}", True)
+        if isinstance(operator, np.ndarray):
+            self.one_body_sampling_operators[name] = operator
+
+    def build_default_one_body_sampling_operators(self):
+        one_body_ops = self.lookup.find("sample_properties", "is_one_body_operator")
+        for name, props in zip(one_body_ops, one_body_ops.values()):
+            if self.inputs(props["sample_keyword"]):
+                op = operator.attrgetter(props["operator_attr"])(self)
+                self.one_body_sampling_operators[name] = copy.copy(
+                    op if callable(op) else lambda t, op=op: op
+                )
 
     def build_hamiltonian(self):
         self.logger.log(self.inputs("print_level"))
 
-        if not hasattr(self, "pulses"):
+        if self.pulses is None:
             self.setup_pulses()
 
         if self.inputs("laser_approx") == "dipole":
 
             operators = construct_linear_dipole_operators(
-                self.QS, self.pulses, self.inputs("gauge")
+                self.system, self.pulses, self.inputs("gauge")
             )
 
             if self.inputs("gauge") == "velocity":
                 if self.inputs("quadratic_terms"):
                     operators += construct_quadratic_dipole_operators(
-                        self.QS, self.pulses
+                        self.system, self.pulses
                     )
                 if self.inputs("cross_terms"):
-                    operators += construct_cross_dipole_operators(self.QS, self.pulses)
+                    operators += construct_cross_dipole_operators(
+                        self.system, self.pulses
+                    )
 
         if self.inputs("laser_approx") == "plane_wave":
-            operators = construct_linear_plane_wave_operators(self.pwi, self.pulses)
+            operators = construct_linear_plane_wave_operators(
+                self.pwi_container, self.pulses
+            )
 
             if self.inputs("quadratic_terms"):
                 operators += construct_quadratic_plane_wave_operators(
-                    self.pwi, self.pulses
+                    self.pwi_container, self.pulses
                 )
             if self.inputs("cross_terms"):
-                operators += construct_cross_plane_wave_operators(self.pwi, self.pulses)
+                operators += construct_cross_plane_wave_operators(
+                    self.pwi_container, self.pulses
+                )
 
-        self.QS.set_time_evolution_operator(operators)
+        self.system.set_time_evolution_operator(operators)
 
-    def build_integrator(self, integrator=None, **integrator_params):
+    def build_integrator(
+        self, integrator=None, integrator_module=None, **integrator_params
+    ):
         self.logger.log(self.inputs("print_level"))
-
-        self.tdcc = self.TDCC(self.QS)
 
         if integrator is not None:
             self.inputs.set("integrator", integrator)
-        integrator = self.inputs("integrator")
-
-        if hasattr(self, "samples"):
-            t0 = np.max(self.samples["time_points"]) + self.inputs("time_step")
-        else:
-            t0 = self.inputs("initial_time")
-
+        if integrator is not None:
+            self.inputs.set("integrator_module", integrator_module)
         if (len(integrator_params) > 0) or (
             not self.inputs.has_key("integrator_params")
         ):
             self.inputs.set("integrator_params", integrator_params)
+
+        integrator = self.inputs("integrator")
+        integrator_module = self.inputs("integrator_module")
         integrator_params = self.inputs("integrator_params")
 
-        name = self.lookup.integrators[integrator]["name"]
-        module = self.lookup.integrators[integrator]["module"]
+        if self.samples is not None:
+            t0 = np.max(self.samples["time_points"]) + self.inputs("time_step")
+        else:
+            t0 = self.inputs("initial_time")
+
+        if integrator_module is not None:
+            name = integrator
+            module = integrator_module
+        else:
+            name = self.lookup.integrators[integrator]["name"]
+            module = self.lookup.integrators[integrator]["module"]
+
         if module is not None:
             getattr(importlib.import_module(module), name)
+
+        self.tdcc = self.TDCC(self.system)
 
         self.r = complex_ode(self.tdcc).set_integrator(name, **integrator_params)
         self.r.set_initial_value(self.y0, t0)
@@ -503,62 +567,10 @@ class TimePropagator:
 
         total_time = self.inputs("final_time") - self.inputs("initial_time")
         self.num_steps = int(total_time / self.inputs("time_step")) + 1
-        if not hasattr(self, "samples"):
+        if self.samples is None:
             self.setup_samples()
         else:
             self.update_samples()
-
-    def compute_dipole_vector_potential(self):
-        A = np.zeros((3, self.QS.l, self.QS.l), dtype=np.complex128)
-
-        for i in np.arange(3):
-            A[i, :, :] = np.eye(self.QS.l)
-
-        pulse = np.zeros(3)
-        for m in np.arange(self.pulses.n_pulses):
-            pulse += self.pulses.Ru[m, :] * self.pulses.Rg[m](
-                self.r.t
-            ) + self.pulses.Iu[m, :] * self.pulses.Ig[m](self.r.t)
-
-        for i in np.arange(3):
-            A[i, :, :] *= pulse[i]
-
-        return A
-
-    def compute_plane_wave_vector_potential(self):
-        A = np.zeros((3, self.QS.l, self.QS.l), dtype=np.complex128)
-        for m in np.arange(self.pulses.n_pulses):
-            for i in np.arange(3):
-                A[i] += self.pulses.Ru[m, i] * (
-                    self.pwi[f"cos,{m}"] * self.pulses.Rg[m](self.r.t)
-                    + self.pwi[f"sin,{m}"] * self.pulses.Ig[m](self.r.t)
-                )
-                A[i] += self.pulses.Iu[m, i] * (
-                    self.pwi[f"cos,{m}"] * self.pulses.Ig[m](self.r.t)
-                    - self.pwi[f"sin,{m}"] * self.pulses.Rg[m](self.r.t)
-                )
-        return A
-
-    def get_C(self):
-        if self.orbital_adaptive:
-            if self.correlated:
-                t_amps, l_amps, C, C_tilde = self.tdcc._amp_template.from_array(
-                    self.r.y
-                )
-            else:
-                C = self.r.y.reshape(self.QS.l, self.QS.l)
-                C_tilde = C.conj().T
-        else:
-            C = C_tilde = None
-        return C, C_tilde
-
-    def _get_dynamic_sample_dim(self, dim):
-        dim_ = list(dim)
-        n = len(dim)
-        for i in [j for j in range(n) if isinstance(dim_[j], str)]:
-            dim_[i] = operator.attrgetter(dim[i])(self)
-
-        return [self.num_steps] + dim_
 
     def setup_samples(self):
         samples = {}
@@ -586,20 +598,6 @@ class TimePropagator:
                 s[0] = add_n_points
                 ext = np.zeros(s)
                 self.samples[el] = np.concatenate((self.samples[el], ext))
-
-    def setup_R0(self):
-        if not hasattr(self, "cc"):
-            cc_kwargs = dict(verbose=False)
-            self.cc = self.CC(self.QS, **cc_kwargs)
-            self.cc.compute_ground_state(
-                t_kwargs=dict(tol=self.inputs("ground_state_tolerance")),
-                l_kwargs=dict(tol=self.inputs("ground_state_tolerance")),
-            )
-        t, l = self.cc.get_amplitudes(get_t_0=True)
-        self.ssc.t = t
-        self.ssc.l = l
-
-        self.ssc.R0 = compute_R0(self.ssc)
 
     def checkpoint(self):
         if self.inputs("checkpoint_unit") == "iterations":
@@ -631,7 +629,10 @@ class TimePropagator:
             output["arrays"]["state"] = self.r.y
         if self.inputs("return_C"):
             output["arrays"]["C"] = self.C
-        if self.inputs("return_stationary_states") and hasattr(self, "ssc"):
+        if (
+            self.inputs("return_stationary_states")
+            and self.states_container is not None
+        ):
             # if self.inputs()
             # output["arrays_stationary_states"]
             pass
@@ -642,6 +643,81 @@ class TimePropagator:
 
         return output
 
+    def _get_dynamic_sample_dim(self, dim):
+        dim_ = list(dim)
+        n = len(dim)
+        for i in [j for j in range(n) if isinstance(dim_[j], str)]:
+            dim_[i] = operator.attrgetter(dim[i])(self)
+
+        return [self.num_steps] + dim_
+
+    def _get_C(self):
+        if self.orbital_adaptive:
+            if self.correlated:
+                t_amps, l_amps, C, C_tilde = self.tdcc._amp_template.from_array(
+                    self.r.y
+                )
+            else:
+                C = self.r.y.reshape(self.system.l, self.system.l)
+                C_tilde = C.conj().T
+        else:
+            C = C_tilde = None
+        return C, C_tilde
+
+    def _compute_R0(self):
+        if self.cc is None:
+            cc_kwargs = dict(verbose=False)
+            self.cc = self.CC(self.system, **cc_kwargs)
+            self.cc.compute_ground_state(
+                t_kwargs=dict(tol=self.inputs("ground_state_tolerance")),
+                l_kwargs=dict(tol=self.inputs("ground_state_tolerance")),
+            )
+        t, l = self.cc.get_amplitudes(get_t_0=True)
+        self.states_container.t = t
+        self.states_container.l = l
+
+        return compute_R0(self.states_container)
+
+    def _compute_dipole_vector_potential(self, t):
+        return compute_dipole_vector_potential(self.system, self.pulses, t)
+
+    def _compute_plane_wave_vector_potential(self, t):
+        return compute_plane_wave_vector_potential(
+            self.system, self.pulses, self.pwi_container, t
+        )
+
+    def _compute_vector_potential(self, t):
+        if self.inputs("gauge") == "length":
+            return 0
+        if self.inputs("laser_approx") == "dipole":
+            return self._compute_dipole_vector_potential(t)
+        else:
+            return self._compute_plane_wave_vector_potential(t)
+
+    def _kinetic_momentum_operator(self, t):
+        return self.system.momentum + self._compute_vector_potential(t)
+
+    def _compute_expectation_value(self, t, y, M):
+        return compute_expectation_value(self.tdcc, t, y, M)
+
+    def _compute_CI_projectors(self, t, y):
+        return compute_CI_projectors(self.tdcc, self.states_container, t, y)
+
+    def _compute_conventional_EOM_projectors(self, t_amp, l_amp):
+        return compute_conventional_EOM_projectors(self.states_container, t_amp, l_amp)
+
+    def _compute_two_component_EOM_projectors(self, t_amp, l_amp):
+        return compute_two_component_EOM_projectors(self.states_container, t_amp, l_amp)
+
+    def _compute_LR_projectors(self, t_amp, l_amp):
+        return compute_LR_projectors(self.states_container, t_amp, l_amp)
+
+    def _compute_F_dipole(self, t, rho_qp):
+        return compute_F_dipole(t, rho_qp)
+
+    def _compute_F(self, t, rho_qp):
+        return compute_F(t, rho_qp, self.pulses, self.pwi_container)
+
     def propagate(self):
         compute_CC_projectors = bool(
             self.inputs("sample_EOM_projectors")
@@ -649,10 +725,10 @@ class TimePropagator:
             + self.inputs("sample_LR_projectors")
         )
 
-        if compute_CC_projectors and self.ssc.R0 is None:
-            self.setup_R0()
+        if compute_CC_projectors and self.states_container.R0 is None:
+            self.states_container.R0 = self._compute_R0()
 
-        if not hasattr(self, "iter"):
+        if self.iter is None:
             self.iter = 0
 
         i0 = self.iter
@@ -679,47 +755,21 @@ class TimePropagator:
 
             self.samples["time_points"][i] = self.r.t
 
+            # Sample one body operators
+            for el in self.one_body_sampling_operators:
+                M = self.one_body_sampling_operators[el](self.r.t)
+                self.samples[el][i] = self._compute_expectation_value(
+                    self.r.t, self.r.y, M
+                )
+
             # ENERGY
             if self.inputs("sample_energy"):
                 self.samples["energy"][i] = self.tdcc.compute_energy(self.r.t, self.r.y)
 
-            # DIPOLE MOMENT
-            if self.inputs("sample_dipole_moment"):
-                M = self.QS.dipole_moment.copy()
-                self.samples["dipole_moment"][i, :] = compute_expectation_value(
-                    self.tdcc, self.r.t, self.r.y, M
-                )
-
-            # CANONICAL MOMENTUM
-            if self.inputs("sample_momentum"):
-                M = self.QS.momentum.copy()
-                self.samples["momentum"][i, :] = compute_expectation_value(
-                    self.tdcc, self.r.t, self.r.y, M
-                )
-
-            # KINETIC MOMENTUM
-            if self.inputs("sample_kinetic_momentum"):
-                M = self.QS.momentum.copy()
-                if self.inputs("gauge") == "velocity":
-                    if self.inputs("laser_approx") == "dipole":
-                        M += self.compute_dipole_vector_potential()
-                    else:
-                        M += self.compute_plane_wave_vector_potential()
-                self.samples["kinetic_momentum"][i, :] = compute_expectation_value(
-                    self.tdcc, self.r.t, self.r.y, M
-                )
-
-            # QUADRUPOLE MOMENTS
-            if self.inputs("sample_quadrupole_moment"):
-                M = self.r2.copy()
-                self.samples["quadrupole_moment"][i, :] = compute_expectation_value(
-                    self.tdcc, self.r.t, self.r.y, M
-                )
-
             # CI projectors
             if self.inputs("sample_CI_projectors"):
-                self.samples["CI_projectors"][i, :] = compute_CI_projectors(
-                    self.tdcc, self.ssc, self.r.t, self.r.y
+                self.samples["CI_projectors"][i, :] = self._compute_CI_projectors(
+                    self.r.t, self.r.y
                 )
 
             # AUTO CORRELATION
@@ -735,18 +785,18 @@ class TimePropagator:
                 if self.inputs("sample_EOM_projectors"):
                     self.samples["EOM_projectors"][
                         i, :
-                    ] = compute_conventional_EOM_projectors(self.ssc, t, l)
+                    ] = self._compute_conventional_EOM_projectors(t, l)
 
                 # EOM2 PROJECTORS
                 if self.inputs("sample_EOM2_projectors"):
                     self.samples["EOM2_projectors"][
                         i, :
-                    ] = compute_two_component_EOM_projectors(self.ssc, t, l)
+                    ] = self._compute_two_component_EOM_projectors(t, l)
 
                 # LR PROJECTORS
                 if self.inputs("sample_LR_projectors"):
-                    self.samples["LR_projectors"][i, :] = compute_LR_projectors(
-                        self.ssc, t, l
+                    self.samples["LR_projectors"][i, :] = self._compute_LR_projectors(
+                        t, l
                     )
 
             # SPECTRAL RESPONSE
@@ -762,9 +812,9 @@ class TimePropagator:
                         self.r.t, rho_qp
                     )
                 if self.inputs("sample_general_response"):
-                    self.pwi.C, self.pwi.C_tilde = self.get_C()
+                    self.pwi_container.C, self.pwi_container.C_tilde = self._get_C()
                     self.samples["general_response"][i, :, :, :] = compute_F(
-                        self.r.t, rho_qp, self.pulses, self.pwi
+                        self.r.t, rho_qp, self.pulses, self.pwi_container
                     )
 
             if self.inputs("sample_laser_pulse"):
