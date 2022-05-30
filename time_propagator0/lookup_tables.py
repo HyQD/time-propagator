@@ -1,5 +1,4 @@
 # Contains named tuples defining implemented methods,integrators,property sampling etc
-from typing import NamedTuple
 
 
 Methods = {
@@ -169,56 +168,71 @@ SampleProperties = {
         "dim": (3,),
         "dtype": "float",
         "sample_keyword": "sample_laser_pulse",
+        "is_one_body_operator": False,
     },
     "energy": {
         "dim": (1,),
         "dtype": "complex128",
         "sample_keyword": "sample_energy",
+        "is_one_body_operator": False,
     },
     "dipole_moment": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_dipole_moment",
+        "is_one_body_operator": True,
+        "operator_attr": "system.dipole_moment",
     },
     "quadrupole_moment": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_quadrupole_moment",
+        "is_one_body_operator": True,
+        "operator_attr": "system.quadrupole_moment",
     },
     "momentum": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_momentum",
+        "is_one_body_operator": True,
+        "operator_attr": "system.momentum",
     },
     "kinetic_momentum": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_kinetic_momentum",
+        "is_one_body_operator": True,
+        "operator_attr": "_kinetic_momentum_operator",
     },
     "CI_projectors": {
-        "dim": ("ssc.n_states",),
+        "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_CI_projectors",
+        "is_one_body_operator": False,
     },
     "auto_correlation": {
         "dim": (1,),
         "dtype": "complex128",
         "sample_keyword": "sample_auto_correlation",
+        "is_one_body_operator": False,
     },
     "EOM_projectors": {
-        "dim": ("ssc.n_states",),
+        "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_EOM_projectors",
+        "is_one_body_operator": False,
     },
     "EOM2_projectors": {
-        "dim": ("ssc.n_states",),
+        "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_EOM2_projectors",
+        "is_one_body_operator": False,
     },
     "LR_projectors": {
-        "dim": ("ssc.n_states",),
+        "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_LR_projectors",
+        "is_one_body_operator": False,
     },
     "dipole_response": {
         "dim": (
@@ -228,6 +242,7 @@ SampleProperties = {
         ),
         "dtype": "complex128",
         "sample_keyword": "sample_dipole_response",
+        "is_one_body_operator": False,
     },
     "general_response": {
         "dim": (
@@ -237,6 +252,7 @@ SampleProperties = {
         ),
         "dtype": "complex128",
         "sample_keyword": "sample_general_response",
+        "is_one_body_operator": False,
     },
 }
 
@@ -404,11 +420,24 @@ EOMCCPrograms = ("dalton",)
 PWIPrograms = ("molcas",)
 
 
-class LookupTables(NamedTuple):
-    methods = Methods
-    integrators = Integrators
-    sample_properties = SampleProperties
-    input_requirements = InputRequirements
-    reference_programs = ReferencePrograms
-    EOMCC_programs = EOMCCPrograms
-    PWI_programs = PWIPrograms
+class LookupTables:
+    def __init__(self):
+        self.methods = Methods
+        self.integrators = Integrators
+        self.sample_properties = SampleProperties
+        self.input_requirements = InputRequirements
+        self.reference_programs = ReferencePrograms
+        self.EOMCC_programs = EOMCCPrograms
+        self.PWI_programs = PWIPrograms
+
+    def find(self, attr, key, value=True):
+        table = getattr(self, attr)
+
+        if not isinstance(table, dict):
+            return None
+
+        ret_table = {}
+        for el, val in zip(table, table.values()):
+            if val[key] == value:
+                ret_table[el] = val
+        return ret_table
