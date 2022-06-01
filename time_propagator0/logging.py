@@ -100,17 +100,17 @@ log_messages = {
         "style": "d",
         "print_level": 5,
     },
-    "build_hamiltonian": {
+    "_build_hamiltonian": {
         "string": "Building Hamiltonian",
         "style": "e",
         "print_level": 5,
     },
-    "build_integrator": {
+    "_build_integrator": {
         "string": "Building integrator",
         "style": "e",
         "print_level": 5,
     },
-    "build_samples": {
+    "_build_sampling_arrays": {
         "string": "Building sample arrays",
         "style": "e",
         "print_level": 5,
