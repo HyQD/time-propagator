@@ -4,7 +4,6 @@ import numpy as np
 
 def construct_linear_dipole_operators(QS, pulses, gauge):
     dipole_operator = QS.position if gauge == "length" else QS.momentum
-
     Ru = pulses.Ru
     Rg = pulses.Rg
     Iu = pulses.Iu
