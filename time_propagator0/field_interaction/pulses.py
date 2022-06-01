@@ -95,9 +95,11 @@ class Pulses(metaclass=abc.ABCMeta):
         val = np.dot(self.Iu[pulse_no1], self.Iu[pulse_no2])
         return True if np.abs(val) > self._eps else False
 
+    @abc.abstractmethod
     def pulse(self, t, m):
         pass
 
+    @abc.abstractmethod
     def pulses(self, t):
         pass
 
@@ -175,9 +177,9 @@ def setup_Pulses(pulse_inputs):
         Ru[c, :] = (inputs["polarization"]).real
         Iu[c, :] = (inputs["polarization"]).imag
 
-        pulse_class = inputs["pulse_class"]
+        laser_class = inputs["laser_class"]
 
-        Laser = vars(lasers)[pulse_class]
+        Laser = vars(lasers)[laser_class]
 
         Rg.append(Laser(**inputs))
 
