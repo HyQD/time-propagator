@@ -25,6 +25,9 @@ class QuantumSystemValues:
         nuclear_repulse_energy = None
         converged = None
 
+    def set_pyscf_values(obj):
+        pass
+
     def set_pyscf_values_ao(self, mol):
         # charges = mol.atom_charges()
         # coords = mol.atom_coords()
