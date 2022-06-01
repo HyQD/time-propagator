@@ -1,5 +1,4 @@
 import abc
-
 import numpy as np
 
 from time_propagator0.setup_daltonproject import (
@@ -8,6 +7,12 @@ from time_propagator0.setup_daltonproject import (
 
 
 class IntegralContainer(metaclass=abc.ABCMeta):
+    def __init__(self, integrals, C=None, C_tilde=None):
+        self._integrals = integrals
+        self._C = C
+        self._C_tilde = C_tilde
+        self._l = (integrals["cosp,0"]).shape[-1]
+
     @property
     def l(self):
         return self._l
@@ -29,40 +34,24 @@ class IntegralContainer(metaclass=abc.ABCMeta):
         self._C_tilde = C_tilde
 
     def change_basis(self):
-        for i in range(len(self._integrals)):
-            self._integrals[i] = self.C_transform(self._integrals[i])
+        for el in self._integrals:
+            self._integrals[el] = self.C_tilde @ self._integrals[el] @ self.C
         self.C = np.eye(len(self.C))
         self.C_tilde = np.eye(len(self.C_tilde))
 
-    def C_transform(self, M):
-        return self.C_tilde @ M @ self.C
-
+    @abc.abstractmethod
     def __getitem__(self, index):
         pass
 
 
 class IntegralContainerFixedOrbitals(IntegralContainer):
-    def __init__(self, integrals, mapping=None, C=None, C_tilde=None):
-        self._integrals = integrals
-        self._mapping = mapping
-        self._C = C
-        self._C_tilde = C_tilde
-        self._l = (integrals[0]).shape[-1]
-
     def __getitem__(self, index):
-        return self._integrals[self._mapping[index]]
+        return self._integrals[index]
 
 
 class IntegralContainerOrbitalAdaptive(IntegralContainer):
-    def __init__(self, integrals, mapping=None, C=None, C_tilde=None):
-        self._integrals = integrals
-        self._mapping = mapping
-        self._C = C
-        self._C_tilde = C_tilde
-        self._l = (integrals[0]).shape[-1]
-
     def __getitem__(self, index):
-        return self.C_transform(self._integrals[self._mapping[index]])
+        return self.C_tilde @ self._integrals[index] @ self.C
 
 
 def get_integrals_from_molcas(
@@ -70,12 +59,9 @@ def get_integrals_from_molcas(
     basis,
     omega,
     k_direction,
-    verbose=False,
     return_s=False,
     custom_basis=False,
 ):
-    if verbose:
-        print("Running Molcas, omega: ", omega)
     ma = compute_plane_wave_integrals_from_molcas(
         molecule, basis, omega, k_direction, custom_basis=custom_basis
     )
@@ -107,10 +93,7 @@ def setup_plane_wave_integrals_from_molcas(
 ):
     n_pulses = len(pulse_inputs)
 
-    integrals = []
-    index_mapping = {}
-
-    i = 0
+    integrals = {}
 
     for m in range(n_pulses):
         k_direction = pulse_inputs[m]["k_direction"]
@@ -125,37 +108,21 @@ def setup_plane_wave_integrals_from_molcas(
             custom_basis=custom_basis,
         )
 
-        integrals.append(cosp)
-        index_mapping[f"cosp,{m}"] = i
-        i += 1
-        integrals.append(sinp)
-        index_mapping[f"sinp,{m}"] = i
-        i += 1
+        integrals[f"cosp,{m}"] = cosp
+        integrals[f"sinp,{m}"] = sinp
 
         if quadratic_terms:
-            integrals.append(cos2)
-            index_mapping[f"cos+,{m}{m}"] = i
-            i += 1
-            integrals.append(sin2)
-            index_mapping[f"sin+,{m}{m}"] = i
-            i += 1
-            integrals.append(s)
-            index_mapping[f"cos-,{m}{m}"] = i
-            i += 1
-            integrals.append(np.zeros_like(s))
-            index_mapping[f"sin-,{m}{m}"] = i
-            i += 1
+            integrals[f"cos+,{m}{m}"] = cos2
+            integrals[f"sin+,{m}{m}"] = sin2
+            integrals[f"cos-,{m}{m}"] = s
+            integrals[f"sin-,{m}{m}"] = np.zeros_like(s)
 
         if compute_A:
             cosp, sinp, cos2, sin2 = get_integrals_from_molcas(
                 molecule, basis, omega / 2, k_direction, custom_basis=custom_basis
             )
-            integrals.append(cos2)
-            index_mapping[f"cos,{m}"] = i
-            i += 1
-            integrals.append(sin2)
-            index_mapping[f"sin,{m}"] = i
-            i += 1
+            integrals[f"cos,{m}"] = cos2
+            integrals[f"sin,{m}"] = sin2
 
     if cross_terms:
         pulse_nums = np.arange(n_pulses)
@@ -179,31 +146,17 @@ def setup_plane_wave_integrals_from_molcas(
                 cosp, sinp, cos2, sin2 = get_integrals_from_molcas(
                     molecule, basis, omega_pl, k_direction_pl, custom_basis=custom_basis
                 )
-                integrals.append(cos2)
-                index_mapping[f"cos+,{m}{n}"] = i
-                index_mapping[f"cos+,{n}{m}"] = i
-                i += 1
-                integrals.append(sin2)
-                index_mapping[f"sin+,{m}{n}"] = i
-                index_mapping[f"sin+,{n}{m}"] = i
-                i += 1
+                integrals[f"cos+,{m}{n}"] = cos2
+                integrals[f"cos+,{n}{m}"] = cos2
+                integrals[f"sin+,{m}{n}"] = sin2
+                integrals[f"sin+,{n}{m}"] = sin2
 
                 cosp, sinp, cos2, sin2 = get_integrals_from_molcas(
                     molecule, basis, omega_mi, k_direction_mi, custom_basis=custom_basis
                 )
-                integrals.append(cos2)
-                index_mapping[f"cos-,{m}{n}"] = i
-                index_mapping[f"cos-,{n}{m}"] = i
-                i += 1
-                integrals.append(sin2)
-                index_mapping[f"sin-,{m}{n}"] = i
-                i += 1
-                integrals.append(-sin2)
-                index_mapping[f"sin-,{n}{m}"] = i
-                i += 1
+                integrals[f"cos-,{m}{n}"] = cos2
+                integrals[f"cos-,{n}{m}"] = cos2
+                integrals[f"sin-,{m}{n}"] = sin2
+                integrals[f"sin-,{n}{m}"] = -sin2
 
-    return integrals, index_mapping
-
-
-def setup_PlaneWaveIntegralsContainerMemorySaver_from_molcas():
-    pass
+    return integrals
