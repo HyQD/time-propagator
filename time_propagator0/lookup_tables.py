@@ -1,5 +1,6 @@
-# Contains named tuples defining implemented methods,integrators,property sampling etc
-
+# Contains dictionaries and tuples defining implemented methods,
+# integrators, property sampling input types and implemented
+# interfaces for 3rd party programs
 
 Methods = {
     "rcc2": {
@@ -168,71 +169,67 @@ SampleProperties = {
         "dim": (3,),
         "dtype": "float",
         "sample_keyword": "sample_laser_pulse",
-        "is_one_body_operator": False,
+        "operator_attr": "_pulse_value",
     },
     "energy": {
         "dim": (1,),
         "dtype": "complex128",
         "sample_keyword": "sample_energy",
-        "is_one_body_operator": False,
+        "operator_attr": "_hamiltonian_expectation_value",
     },
     "dipole_moment": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_dipole_moment",
-        "is_one_body_operator": True,
-        "operator_attr": "system.dipole_moment",
+        "operator_attr": "_dipole_moment_expectation_value",
     },
     "quadrupole_moment": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_quadrupole_moment",
-        "is_one_body_operator": True,
-        "operator_attr": "system.quadrupole_moment",
+        "operator_attr": "_quadrupole_moment_expectation_value",
     },
     "momentum": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_momentum",
-        "is_one_body_operator": True,
-        "operator_attr": "system.momentum",
+        "operator_attr": "_momentum_expectation_value",
     },
     "kinetic_momentum": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_kinetic_momentum",
-        "is_one_body_operator": True,
-        "operator_attr": "_kinetic_momentum_operator",
+        "operator_attr": "_kinetic_momentum_expectation_value",
     },
     "CI_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_CI_projectors",
-        "is_one_body_operator": False,
+        "operator_attr": "_compute_CI_projectors",
     },
     "auto_correlation": {
         "dim": (1,),
         "dtype": "complex128",
         "sample_keyword": "sample_auto_correlation",
-        "is_one_body_operator": False,
+        "operator_attr": "_compute_auto_correlation",
     },
     "EOM_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_EOM_projectors",
-        "is_one_body_operator": False,
+        "operator_attr": "_compute_conventional_EOM_projectors",
     },
     "EOM2_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_EOM2_projectors",
-        "is_one_body_operator": False,
+        "operator_attr": "_compute_two_component_EOM_projectors",
     },
     "LR_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_LR_projectors",
-        "is_one_body_operator": False,
+        "operator_attr": "_compute_LR_projectors",
     },
     "dipole_response": {
         "dim": (
@@ -242,7 +239,7 @@ SampleProperties = {
         ),
         "dtype": "complex128",
         "sample_keyword": "sample_dipole_response",
-        "is_one_body_operator": False,
+        "operator_attr": "_compute_F_dipole",
     },
     "general_response": {
         "dim": (
@@ -252,7 +249,7 @@ SampleProperties = {
         ),
         "dtype": "complex128",
         "sample_keyword": "sample_general_response",
-        "is_one_body_operator": False,
+        "operator_attr": "_compute_F",
     },
 }
 
