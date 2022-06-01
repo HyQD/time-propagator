@@ -2,10 +2,13 @@ import numpy as np
 import importlib
 import pickle
 import warnings
+from time_propagator0.lookup_tables import LookupTables
+
+input_requirements = LookupTables().input_requirements
 
 
 class Inputs:
-    def __init__(self, inputs=None, input_requirements=None):
+    def __init__(self, inputs=None):
         """inputs: dict, list containing dicts, or "*.py" filename as str"""
         self.inputs = {}
         self.inputs["pulses"] = []
@@ -16,8 +19,6 @@ class Inputs:
             self.set_from_list(inputs)
         elif isinstance(inputs, str):
             self.set_from_file(inputs)
-
-        self.input_requirements = input_requirements
 
     def set_from_list(self, list_):
         for el in list_:
@@ -40,14 +41,14 @@ class Inputs:
         return self
 
     def set(self, key, value):
-        if self.input_requirements is not None:
+        if input_requirements is not None:
             self.check_validity(key, value)
         self.inputs[key] = self.format(key, value)
 
         return self
 
     def set_custom_input(self, key, value):
-        if key in self.input_requirements:
+        if key in input_requirements:
             raise ValueError(f"Custom input {key} has same name as a defalt input.")
         self.inputs[key] = value
 
@@ -70,7 +71,7 @@ class Inputs:
 
     def check_validity(self, key, value):
         in_pulses = key in self("pulses")
-        in_inputs = key in self.input_requirements
+        in_inputs = key in input_requirements
         if in_pulses and in_inputs:
             raise ValueError(
                 f"You have used pulse name {k}, which is a valid input parameter."
@@ -85,7 +86,7 @@ class Inputs:
     def validate_pulse(self, pulse):
         if not isinstance(pulse, dict):
             raise TypeError(f"Pulse inputs must be of type dict.")
-        if not "pulse_class" in pulse:
+        if not "laser_class" in pulse:
             raise KeyError(f"Pulse inputs must have key 'pulse_class'")
         if not "polarization" in pulse:
             raise KeyError(f"Pulse inputs must have key 'polarization'")
@@ -101,7 +102,7 @@ class Inputs:
                 )
 
     def validate_input(self, key, value):
-        valid_types = self.input_requirements[key]["dtypes"]
+        valid_types = input_requirements[key]["dtypes"]
         if not type(value).__name__ in valid_types:
             raise TypeError(f"{key} has to be one of the types {valid_types}")
 
