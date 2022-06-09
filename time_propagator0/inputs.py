@@ -125,7 +125,7 @@ def load_inputs(inputs):
     key names, elements with higher list index have presedence.
     """
     if isinstance(inputs, str):
-        if inputs[-4:] == ".py":
+        if inputs[-3:] == ".py":
             inputs_ = load_inputs_from_py(inputs)
         elif inputs[-4:] == ".npz":
             inputs_ = np.load(inputs, allow_pickle=True)
