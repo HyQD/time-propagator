@@ -163,10 +163,10 @@ class Logger:
     def set_log(self, log):
         self._log = log
 
-    def log(self, print_level, name_ext="", values=[], new_lines=1):
+    def log(self, print_level, tag="", values=[], new_lines=1):
         method_name = inspect.currentframe().f_back.f_code.co_name
 
-        method_name += " " + name_ext if len(name_ext) > 0 else ""
+        method_name += " " + tag if len(tag) > 0 else ""
         log_message = self._log_messages[method_name]
 
         string = log_message["string"].format(*values)
