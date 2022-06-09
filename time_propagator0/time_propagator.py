@@ -260,7 +260,7 @@ class TimePropagator:
         logger.log(self.inputs("print_level"), values=[program])
         logger.log(
             self.inputs("print_level"),
-            name_ext="hf_energy",
+            tag="hf_energy",
             values=[self.system_values.hf_energy],
         )
 
@@ -315,7 +315,7 @@ class TimePropagator:
 
                 logger.log(
                     self.inputs("print_level"),
-                    name_ext="EOMCC_program",
+                    tag="EOMCC_program",
                     values=[self.inputs("EOMCC_program")],
                 )
 
@@ -323,7 +323,7 @@ class TimePropagator:
 
         logger.log(
             self.inputs("print_level"),
-            name_ext="energies",
+            tag="energies",
             values=[self.state_energies],
         )
 
@@ -825,9 +825,9 @@ class TimePropagator:
         time_points = self.samples["time_points"]
 
         logger.log(self.inputs("print_level"))
-        logger.log(self.inputs("print_level"), name_ext="init_step", values=[i0])
-        logger.log(self.inputs("print_level"), name_ext="final_step", values=[f0])
-        logger.log(self.inputs("print_level"), name_ext="iterations", values=[f0 - i0])
+        logger.log(self.inputs("print_level"), tag="init_step", values=[i0])
+        logger.log(self.inputs("print_level"), tag="final_step", values=[f0])
+        logger.log(self.inputs("print_level"), tag="iterations", values=[f0 - i0])
 
         self.ckpt_sys_time = time.time() / 3600
 
@@ -864,13 +864,13 @@ class TimePropagator:
 
         logger.log(
             self.inputs("print_level"),
-            name_ext="finished",
+            tag="finished",
             values=[self.iter, self.r.successful()],
         )
 
         logger.log(
             self.inputs("print_level"),
-            name_ext="run_time",
+            tag="run_time",
             values=[sys_time1 - sys_time0],
         )
 
