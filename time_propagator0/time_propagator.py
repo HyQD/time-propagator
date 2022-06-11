@@ -596,7 +596,7 @@ class TimePropagator:
         integrator_params = self.inputs("integrator_params")
 
         if self.samples is not None:
-            t0 = np.max(self.samples["time_points"]) + self.inputs("time_step")
+            t0 = np.max(self.samples["time_points"]) + self.inputs("initial_time")
         else:
             t0 = self.inputs("initial_time")
 
@@ -746,65 +746,67 @@ class TimePropagator:
         else:
             return self._compute_plane_wave_vector_potential(t)
 
-    def _kinetic_momentum_operator(self, **kwargs):
+    def _kinetic_momentum_operator(self, *args, **kwargs):
         return self.system.momentum + self._compute_vector_potential(self.r.t)
 
-    def _kinetic_momentum_expectation_value(self, **kwargs):
-        compute_expectation_value(
+    def _kinetic_momentum_expectation_value(self, *args, **kwargs):
+        # print (self._kinetic_momentum_operator().shape)
+        return compute_expectation_value(
             self.tdcc, self.r.t, self.r.y, self._kinetic_momentum_operator()
         )
 
-    def _momentum_expectation_value(self, **kwargs):
-        return self.tdcc.compute_one_body_expectation_value(
-            self.r.t, self.r.y, self.system.momentum
+    def _momentum_expectation_value(self, *args, **kwargs):
+        return compute_expectation_value(
+            self.tdcc, self.r.t, self.r.y, self.system.momentum
         )
 
-    def _dipole_moment_expectation_value(self, **kwargs):
+    def _dipole_moment_expectation_value(self, *args, **kwargs):
         return compute_expectation_value(
             self.tdcc, self.r.t, self.r.y, self.system.dipole_moment
         )
 
-    def _position_expectation_value(self, **kwargs):
+    def _position_expectation_value(self, *args, **kwargs):
         return self.tdcc.compute_one_body_expectation_value(
             self.r.t, self.r.y, self.system.position
         )
 
-    def _quadrupole_moment_expectation_value(self, **kwargs):
+    def _quadrupole_moment_expectation_value(self, *args, **kwargs):
         return self.tdcc.compute_one_body_expectation_value(
             self.r.t, self.r.y, self.system.quadrupole_moment
         )
 
-    def _hamiltonian_expectation_value(self, **kwargs):
+    def _hamiltonian_expectation_value(self, *args, **kwargs):
         return self.tdcc.compute_energy(self.r.t, self.r.y)
 
-    def _pulse_value(self, **kwargs):
+    def _pulse_value(self, *args, **kwargs):
         return self.pulses.pulses(self.r.t)
 
     def _compute_expectation_value(self, t, y, M):
         return compute_expectation_value(self.tdcc, t, y, M)
 
-    def _compute_CI_projectors(self, **kwargs):
+    def _compute_CI_projectors(self, *args, **kwargs):
         return compute_CI_projectors(self.tdcc, self.states_container, self.t, self.y)
 
-    def _compute_conventional_EOM_projectors(self, **kwargs):
+    def _compute_conventional_EOM_projectors(self, *args, **kwargs):
         t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
         return compute_conventional_EOM_projectors(self.states_container, t, l)
 
-    def _compute_two_component_EOM_projectors(self, **kwargs):
+    def _compute_two_component_EOM_projectors(self, *args, **kwargs):
         t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
         return compute_two_component_EOM_projectors(self.states_container, t, l)
 
-    def _compute_LR_projectors(self, **kwargs):
+    def _compute_LR_projectors(self, *args, **kwargs):
         t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
         return compute_LR_projectors(self.states_container, t, l)
 
-    def _compute_auto_correlation(self, **kwargs):
+    def _compute_auto_correlation(self, *args, **kwargs):
         return self.tdcc.compute_overlap(self.r.t, self.y0, self.r.y)
 
-    def _compute_F_dipole(self, rho, **kwargs):
+    def _compute_F_dipole(self, *args, **kwargs):
         return compute_F_dipole(self.r.t, rho)
 
-    def _compute_F(self, rho, **kwargs):
+    def _compute_F(self, *args, **kwargs):
+        rho = self.tdcc.compute_one_body_density_matrix(self.r.t, self.r.y)
         return compute_F(self.r.t, rho, self.pulses, self.pwi_container)
 
     def propagate(self):
@@ -836,20 +838,16 @@ class TimePropagator:
         disable_tqdm = True if self.inputs("print_level") == 0 else False
 
         for _ in tqdm.tqdm(time_points[i0:f0], disable=disable_tqdm):
+            i = self.iter
+
             # if not i%10:
             #    print (f'{i} / {self.num_steps}')
-            i = self.iter
 
             self.samples["time_points"][i] = self.r.t
 
             # Sample
             for el in self.sampling_operators:
-                self.samples[el][i] = self.sampling_operators[el](
-                    t=self.r.t,
-                    y=self.r.y,
-                    tdcc=self.tdcc,
-                    pulses=self.pulses,
-                )
+                self.samples[el][i] = self.sampling_operators[el](self)
 
             self.r.integrate(self.r.t + self.inputs("time_step"))
             if not self.r.successful():
