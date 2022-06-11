@@ -143,7 +143,7 @@ class GeneralPulses(Pulses):
         self._has_imag_polarization = True if len(self._nonzero_Iu) == 0 else False
 
     def pulse(self, t, m):
-        ret = np.squeeze(np.zeros((len(t), 3)))
+        ret = np.squeeze(np.zeros((len(np.atleast_1d(t)), 3)))
         if self.Ru_is_nonzero(m):
             ret += np.squeeze((self.Rg[m](t) * self.Ru[m, :, None]).T)
         if self.Iu_is_nonzero(m):
@@ -151,7 +151,7 @@ class GeneralPulses(Pulses):
         return ret
 
     def pulses(self, t):
-        ret = np.squeeze(np.zeros((len(t), 3)))
+        ret = np.squeeze(np.zeros((len(np.atleast_1d(t)), 3)))
         for m in self._nonzero_Ru:
             ret += self.pulse(t, m)
         for m in self._nonzero_Iu:
