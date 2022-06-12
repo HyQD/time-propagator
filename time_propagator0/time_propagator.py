@@ -2,6 +2,7 @@ import time
 import copy
 import operator
 import importlib
+import warnings
 import tqdm
 import numpy as np
 
@@ -765,6 +766,7 @@ class TimePropagator:
 
             self.r.integrate(self.r.t + self.inputs("time_step"))
             if not self.r.successful():
+                warnings.warn("Time integration step did not converge.")
                 break
 
             self.iter += 1
