@@ -170,66 +170,77 @@ SampleProperties = {
         "dtype": "float",
         "sample_keyword": "sample_laser_pulse",
         "operator_attr": "_pulse_value",
+        "sampling_operator": "laser_pulse",
     },
     "energy": {
         "dim": (1,),
         "dtype": "complex128",
         "sample_keyword": "sample_energy",
         "operator_attr": "_hamiltonian_expectation_value",
+        "sampling_operator": "expectation_value_hamiltonian",
     },
     "dipole_moment": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_dipole_moment",
         "operator_attr": "_dipole_moment_expectation_value",
+        "sampling_operator": "expectation_value_dipole_moment",
     },
     "quadrupole_moment": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_quadrupole_moment",
         "operator_attr": "_quadrupole_moment_expectation_value",
+        "sampling_operator": "expectation_value_quadrupole_moment",
     },
     "momentum": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_momentum",
         "operator_attr": "_momentum_expectation_value",
+        "sampling_operator": "expectation_value_momentum",
     },
     "kinetic_momentum": {
         "dim": (3,),
         "dtype": "complex128",
         "sample_keyword": "sample_kinetic_momentum",
         "operator_attr": "_kinetic_momentum_expectation_value",
+        "sampling_operator": "expectation_value_kinetic_momentum",
     },
     "CI_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_CI_projectors",
         "operator_attr": "_compute_CI_projectors",
+        "sampling_operator": "CI_projectors",
     },
     "auto_correlation": {
         "dim": (1,),
         "dtype": "complex128",
         "sample_keyword": "sample_auto_correlation",
         "operator_attr": "_compute_auto_correlation",
+        "sampling_operator": "auto_correlation",
     },
     "EOM_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_EOM_projectors",
         "operator_attr": "_compute_conventional_EOM_projectors",
+        "sampling_operator": "conventional_EOM_projectors",
     },
     "EOM2_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_EOM2_projectors",
         "operator_attr": "_compute_two_component_EOM_projectors",
+        "sampling_operator": "two_component_EOM_projectors",
     },
     "LR_projectors": {
         "dim": ("states_container.n_states",),
         "dtype": "complex128",
         "sample_keyword": "sample_LR_projectors",
         "operator_attr": "_compute_LR_projectors",
+        "sampling_operator": "LR_projectors",
     },
     "dipole_response": {
         "dim": (
@@ -240,6 +251,7 @@ SampleProperties = {
         "dtype": "complex128",
         "sample_keyword": "sample_dipole_response",
         "operator_attr": "_compute_F_dipole",
+        "sampling_operator": "compute_F_dipole",
     },
     "general_response": {
         "dim": (
@@ -250,6 +262,7 @@ SampleProperties = {
         "dtype": "complex128",
         "sample_keyword": "sample_general_response",
         "operator_attr": "_compute_F",
+        "sampling_operator": "compute_F",
     },
 }
 
