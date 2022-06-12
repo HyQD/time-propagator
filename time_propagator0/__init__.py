@@ -2,8 +2,6 @@ from .time_propagator import TimePropagator
 
 from .inputs import Inputs, load_inputs, inspect_inputs
 
-from .lookup_tables import LookupTables
-
 from .utils import get_atomic_symbols, get_basis
 
 from .setup_daltonproject import (
