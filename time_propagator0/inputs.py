@@ -96,7 +96,7 @@ class Inputs:
                 np.dot(np.array(pulse["polarization"]), np.array(pulse["k_direction"]))
             )
             if dot_uk > eps:
-                warnings.warns(
+                warnings.warn(
                     f"Large dot product between the polarization vector \
                                 and propagation direction: (u,k)={dot_uk}"
                 )
