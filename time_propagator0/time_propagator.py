@@ -27,17 +27,7 @@ from time_propagator0.custom_system_mod import (
 )
 from time_propagator0.inputs import Inputs, load_inputs, inspect_inputs
 from time_propagator0.utils import get_basis
-from time_propagator0.compute_properties import (
-    compute_expectation_value,
-    compute_conventional_EOM_projectors,
-    compute_two_component_EOM_projectors,
-    compute_LR_projectors,
-    compute_CI_projectors,
-    compute_R0,
-    compute_dipole_vector_potential,
-    compute_plane_wave_vector_potential,
-    compute_F,
-)
+from time_propagator0.compute_properties import compute_R0
 from time_propagator0.setup_daltonproject import (
     compute_response_vectors_from_dalton,
 )
@@ -536,7 +526,10 @@ class TimePropagator:
         sample_props = lookup.sample_properties
         for name, props in zip(sample_props, sample_props.values()):
             if self.inputs(props["sample_keyword"]):
-                op = operator.attrgetter(props["operator_attr"])(self)
+                op = getattr(
+                    importlib.import_module("time_propagator0.sampling_operators"),
+                    props["sampling_operator"],
+                )
                 self.sampling_operators[name] = op
 
     def _build_hamiltonian(self):
@@ -729,85 +722,6 @@ class TimePropagator:
         self.states_container.l = l
 
         return compute_R0(self.states_container)
-
-    def _compute_dipole_vector_potential(self, t):
-        return compute_dipole_vector_potential(self.system, self.pulses, t)
-
-    def _compute_plane_wave_vector_potential(self, t):
-        return compute_plane_wave_vector_potential(
-            self.system, self.pulses, self.pwi_container, t
-        )
-
-    def _compute_vector_potential(self, t):
-        if self.inputs("gauge") == "length":
-            return 0
-        if self.inputs("laser_approx") == "dipole":
-            return self._compute_dipole_vector_potential(t)
-        else:
-            return self._compute_plane_wave_vector_potential(t)
-
-    def _kinetic_momentum_operator(self, *args, **kwargs):
-        return self.system.momentum + self._compute_vector_potential(self.r.t)
-
-    def _kinetic_momentum_expectation_value(self, *args, **kwargs):
-        # print (self._kinetic_momentum_operator().shape)
-        return compute_expectation_value(
-            self.tdcc, self.r.t, self.r.y, self._kinetic_momentum_operator()
-        )
-
-    def _momentum_expectation_value(self, *args, **kwargs):
-        return compute_expectation_value(
-            self.tdcc, self.r.t, self.r.y, self.system.momentum
-        )
-
-    def _dipole_moment_expectation_value(self, *args, **kwargs):
-        return compute_expectation_value(
-            self.tdcc, self.r.t, self.r.y, self.system.dipole_moment
-        )
-
-    def _position_expectation_value(self, *args, **kwargs):
-        return self.tdcc.compute_one_body_expectation_value(
-            self.r.t, self.r.y, self.system.position
-        )
-
-    def _quadrupole_moment_expectation_value(self, *args, **kwargs):
-        return self.tdcc.compute_one_body_expectation_value(
-            self.r.t, self.r.y, self.system.quadrupole_moment
-        )
-
-    def _hamiltonian_expectation_value(self, *args, **kwargs):
-        return self.tdcc.compute_energy(self.r.t, self.r.y)
-
-    def _pulse_value(self, *args, **kwargs):
-        return self.pulses.pulses(self.r.t)
-
-    def _compute_expectation_value(self, t, y, M):
-        return compute_expectation_value(self.tdcc, t, y, M)
-
-    def _compute_CI_projectors(self, *args, **kwargs):
-        return compute_CI_projectors(self.tdcc, self.states_container, self.t, self.y)
-
-    def _compute_conventional_EOM_projectors(self, *args, **kwargs):
-        t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
-        return compute_conventional_EOM_projectors(self.states_container, t, l)
-
-    def _compute_two_component_EOM_projectors(self, *args, **kwargs):
-        t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
-        return compute_two_component_EOM_projectors(self.states_container, t, l)
-
-    def _compute_LR_projectors(self, *args, **kwargs):
-        t, l = self.cc.get_amplitudes(get_t_0=True).from_array(self.r.y)
-        return compute_LR_projectors(self.states_container, t, l)
-
-    def _compute_auto_correlation(self, *args, **kwargs):
-        return self.tdcc.compute_overlap(self.r.t, self.y0, self.r.y)
-
-    def _compute_F_dipole(self, *args, **kwargs):
-        return compute_F_dipole(self.r.t, rho)
-
-    def _compute_F(self, *args, **kwargs):
-        rho = self.tdcc.compute_one_body_density_matrix(self.r.t, self.r.y)
-        return compute_F(self.r.t, rho, self.pulses, self.pwi_container)
 
     def propagate(self):
         compute_CC_projectors = bool(
