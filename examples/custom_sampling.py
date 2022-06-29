@@ -22,8 +22,8 @@ inputs = {
 
 
 # function can take t (time), y (state vector), tdcc object and pulses object
-def trace_rho(t, y, tdcc, **kwargs):
-    rho = tdcc.compute_one_body_density_matrix(t, y)
+def trace_rho(tp):
+    rho = tp.tdcc.compute_one_body_density_matrix(tp.r.t, tp.r.y)
     return np.trace(rho)
 
 
