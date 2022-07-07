@@ -930,6 +930,25 @@ class gaussian_lasers_cos:
             pulse += laser(t)
         return pulse
 
+class gaussian_laser_crawford_group:
+    def __init__(self, field_strength, omega, sigma, center=0., **kwargs):
+        self.field_strength = field_strength
+        self.omega = omega
+        self.sigma2 = sigma**2
+        self.t0 = center
+
+    def _envelope(self, t):
+        dt = t - self.t0
+        return np.exp(-dt**2/(2*self.sigma2))
+
+    def __call__(self, t):
+        dt = t - self.t0
+        pulse = (
+            np.exp(-dt**2/(2*self.sigma2))
+            * np.cos(self.omega * dt)
+        )
+        return self.field_strength*pulse
+
 
 if __name__ == "__main__":
 

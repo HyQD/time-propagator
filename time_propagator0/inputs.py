@@ -87,7 +87,7 @@ class Inputs:
         if not isinstance(pulse, dict):
             raise TypeError(f"Pulse inputs must be of type dict.")
         if not "laser_class" in pulse:
-            raise KeyError(f"Pulse inputs must have key 'pulse_class'")
+            raise KeyError(f"Pulse inputs must have key 'laser_class'")
         if not "polarization" in pulse:
             raise KeyError(f"Pulse inputs must have key 'polarization'")
         if "k_direction" in pulse:
