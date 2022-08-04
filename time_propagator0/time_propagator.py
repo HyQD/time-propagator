@@ -130,6 +130,7 @@ class TimePropagator:
 
         self.samples = {}
         self.sampling_operators = {}
+        self.modules = {}
 
         inputs = copy.deepcopy(inputs)
 
@@ -541,6 +542,9 @@ class TimePropagator:
         dim_ = [self.num_steps] + list(dim)
         self.samples[name] = np.zeros(dim_, dtype=dtype)
 
+    def add_module(self,name,obj):
+        self.modules[name] = obj
+
     def _build_default_sampling_operators(self):
         sample_props = lookup.sample_properties
         for name, props in zip(sample_props, sample_props.values()):
@@ -785,6 +789,9 @@ class TimePropagator:
             # Sample
             for el in self.sampling_operators:
                 self.samples[el][i] = self.sampling_operators[el](self)
+            
+            for el in self.modules:
+                self.modules[el]()
 
             self.r.integrate(self.r.t + self.inputs("time_step"))
             if not self.r.successful():
