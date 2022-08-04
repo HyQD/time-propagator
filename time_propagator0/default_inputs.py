@@ -30,7 +30,7 @@ default_inputs = {
     "sample_LR_projectors": False,
     "load_all_response_vectors": True,
     "return_state": True,
-    "return_C": False,
+    "return_hf_coeff_matrix": True,
     "return_stationary_states": False,
     "return_plane_wave_integrals": False,
     "sample_dipole_response": False,

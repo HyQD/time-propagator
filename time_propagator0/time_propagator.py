@@ -195,6 +195,9 @@ class TimePropagator:
 
         self.set_initial_state(arrays["state"])
 
+        if "hf_coeff_matrix" in arrays:
+            self.set_hf_coeff_matrix(arrays["hf_coeff_matrix"])
+
         self.iter = misc["iter"]
 
         logger.set_log(log)
@@ -223,19 +226,31 @@ class TimePropagator:
         if not program in lookup.reference_programs:
             raise TypeError(f"Quantum system setup is not implemented with {program}.")
 
-        # run_hf = self.system_values.C is None or force_hf_recalculation
-
         molecule = self.inputs("molecule")
         basis = self.inputs("basis")
         charge = self.inputs("charge")
 
-        if program == "pyscf":
-            from time_propagator0 import run_pyscf_rhf
+        skip_hf = (self.system_values.C is not None) and (not force_hf_recalculation)
 
-            self.system_values.set_pyscf_values_rhf(
-                run_pyscf_rhf(molecule, basis=basis, charge=charge)
-            )
+        if program == "pyscf":
+            if skip_hf:
+                from time_propagator0 import run_pyscf_ao
+
+                self.system_values.set_pyscf_values_ao(
+                    run_pyscf_ao(molecule, basis=basis, charge=charge)
+                )
+            else:
+                from time_propagator0 import run_pyscf_rhf
+
+                self.system_values.set_pyscf_values_rhf(
+                    run_pyscf_rhf(molecule, basis=basis, charge=charge)
+                )
         elif program == "dalton":
+            if skip_hf:
+                warnings.warn(
+                    "Reusing hf_coeff_matrix does not currently work with Dalton."
+                )
+
             from time_propagator0 import run_dalton_rhf
 
             self.system_values.set_dalton_values_rhf(
@@ -593,7 +608,11 @@ class TimePropagator:
         integrator_params = self.inputs("integrator_params")
 
         if self.samples is not None:
-            t0 = np.max(self.samples["time_points"]) + self.inputs("initial_time") + self.inputs("time_step")
+            t0 = (
+                np.max(self.samples["time_points"])
+                + self.inputs("initial_time")
+                + self.inputs("time_step")
+            )
         else:
             t0 = self.inputs("initial_time")
 
@@ -676,8 +695,8 @@ class TimePropagator:
 
         if self.inputs("return_state"):
             output["arrays"]["state"] = self.r.y
-        if self.inputs("return_C"):
-            output["arrays"]["C"] = self.system_values.C
+        if self.inputs("return_hf_coeff_matrix"):
+            output["arrays"]["hf_coeff_matrix"] = self.system_values.C
         if (
             self.inputs("return_stationary_states")
             and self.states_container is not None

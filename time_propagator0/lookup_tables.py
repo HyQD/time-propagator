@@ -383,7 +383,7 @@ InputRequirements = {
     "return_state": {
         "dtypes": ("bool",),
     },
-    "return_C": {
+    "return_hf_coeff_matrix": {
         "dtypes": ("bool",),
     },
     "return_stationary_states": {
