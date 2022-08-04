@@ -12,18 +12,18 @@ from time_propagator0.utils import get_atomic_symbols
 
 class QuantumSystemValues:
     def __init__(self):
-        h = None
-        u = None
-        s = None
-        position = None
-        momentum = None
-        quadrupole_moment = None
-        C = None
-        n = None
-        l = None
-        hf_energy = None
-        nuclear_repulse_energy = None
-        converged = None
+        self.h = None
+        self.u = None
+        self.s = None
+        self.position = None
+        self.momentum = None
+        self.quadrupole_moment = None
+        self.C = None
+        self.n = None
+        self.l = None
+        self.hf_energy = None
+        self.nuclear_repulse_energy = None
+        self.converged = None
 
     def set_pyscf_values(obj):
         pass
