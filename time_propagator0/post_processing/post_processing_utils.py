@@ -12,8 +12,40 @@ def parse_arg(a):
         return a
 
 
+def convert_old_input_params(inp_dict):
+    key = "dt"
+    if key in inp_dict:
+        inp_dict["time_step"] = inp_dict[key]
+        del inp_dict[key]
+
+    key = "pulse_class"
+    for el in inp_dict["pulses"]:
+        if key in inp_dict[el]:
+            inp_dict[el]["laser_class"] = inp_dict[el][key]
+            del inp_dict[el][key]
+
+    key = "initial_state"
+    if key in inp_dict:
+        del inp_dict[key]
+
+    key = "verbose"
+    if key in inp_dict:
+        inp_dict["print_level"] = inp_dict[key]
+        del inp_dict[key]
+
+    key = "return_inputs"
+    if key in inp_dict:
+        del inp_dict[key]
+
+    key = "return_C"
+    if key in inp_dict:
+        inp_dict["return_hf_coeff_matrix"] = inp_dict[key]
+        del inp_dict[key]
+
+
 def setup_inputs(a):
     i = (a["inputs"]).item()
+    convert_old_input_params(i)
     inputs = Inputs({})
     inputs.set_from_dict(i)
     return inputs
