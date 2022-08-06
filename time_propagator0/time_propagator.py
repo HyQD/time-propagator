@@ -3,9 +3,6 @@ import copy
 import operator
 import importlib
 import warnings
-from scipy.integrate import complex_ode
-from gauss_integrator import GaussIntegrator
-from rk4_integrator import Rk4Integrator
 import tqdm
 import numpy as np
 
@@ -542,7 +539,7 @@ class TimePropagator:
         dim_ = [self.num_steps] + list(dim)
         self.samples[name] = np.zeros(dim_, dtype=dtype)
 
-    def add_module(self,name,obj):
+    def add_module(self, name, obj):
         self.modules[name] = obj
 
     def _build_default_sampling_operators(self):
@@ -789,7 +786,7 @@ class TimePropagator:
             # Sample
             for el in self.sampling_operators:
                 self.samples[el][i] = self.sampling_operators[el](self)
-            
+
             for el in self.modules:
                 self.modules[el]()
 
