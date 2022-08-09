@@ -120,6 +120,7 @@ def run_pyscf_rhf(
     basis="cc-pvdz",
     charge=0,
     cart=False,
+    conv_tol_grad=1e-10,
     **kwargs,
 ):
     import pyscf
@@ -129,7 +130,6 @@ def run_pyscf_rhf(
         basis=basis,
         charge=charge,
         cart=cart,
-        conv_tol_grad=1e-10,
         **kwargs,
     )
 
