@@ -160,7 +160,7 @@ Integrators = {
     },
     "Rk4Integrator": {
         "name": "Rk4Integrator",
-        "module": "rk4-integrator",
+        "module": "rk4_integrator",
     },
 }
 
