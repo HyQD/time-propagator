@@ -129,7 +129,7 @@ def run_pyscf_rhf(
         basis=basis,
         charge=charge,
         cart=cart,
-        conv_tol_grad=1e-10
+        conv_tol_grad=1e-10,
         **kwargs,
     )
 
