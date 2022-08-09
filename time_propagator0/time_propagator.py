@@ -227,6 +227,7 @@ class TimePropagator:
         molecule = self.inputs("molecule")
         basis = self.inputs("basis")
         charge = self.inputs("charge")
+        hf_conv_tol = self.inputs("hf_conv_tol")
 
         skip_hf = (self.system_values.C is not None) and (not force_hf_recalculation)
 
@@ -241,7 +242,9 @@ class TimePropagator:
                 from time_propagator0 import run_pyscf_rhf
 
                 self.system_values.set_pyscf_values_rhf(
-                    run_pyscf_rhf(molecule, basis=basis, charge=charge)
+                    run_pyscf_rhf(
+                        molecule, basis=basis, charge=charge, conv_tol_grad=hf_conv_tol
+                    )
                 )
         elif program == "dalton":
             if skip_hf:

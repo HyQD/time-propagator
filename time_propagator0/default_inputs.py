@@ -9,6 +9,7 @@ default_inputs = {
     "integrator": "GaussIntegrator",
     "integrator_module": None,
     "ground_state_tolerance": 1e-10,
+    "hf_conv_tol": 1e-10,
     "quadratic_terms": True,
     "cross_terms": True,
     "charge": 0,
