@@ -308,6 +308,9 @@ InputRequirements = {
     "ground_state_tolerance": {
         "dtypes": ("float",),
     },
+    "hf_conv_tol": {
+        "dtypes": ("float",),
+    },
     "quadratic_terms": {
         "dtypes": ("bool",),
     },
