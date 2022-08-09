@@ -129,10 +129,12 @@ def run_pyscf_rhf(
         basis=basis,
         charge=charge,
         cart=cart,
+        conv_tol_grad=1e-10
         **kwargs,
     )
 
     hf = pyscf.scf.RHF(mol)
+    hf.conv_tol_grad = conv_tol_grad
     hf_energy = hf.kernel()
 
     return hf
