@@ -180,13 +180,29 @@ def compute_F(tp):
     rho_qp = tp.tdcc.compute_one_body_density_matrix(t, y)
     pwi = tp.pwi_container
 
+    cross_terms = tp.inputs("cross_terms")
+
     # F00,m and F01,m
     for m in np.arange(tp.pulses.n_pulses):
         # cos (i=1)
         Z00_l = -1j * np.tensordot(Ru[m], pwi[f"cosp,{m}"], axes=(0, 0))
 
         Z00_q = 0
-        for n in np.arange(tp.pulses.n_pulses):
+        if cross_terms:
+            for n in np.arange(tp.pulses.n_pulses):
+                Z00_q00 = 0.5 * (pwi[f"cos-,{n}{m}"] + pwi[f"cos+,{n}{m}"]) * Rg[n](t)
+                Z00_q11 = 0.5 * (pwi[f"sin+,{n}{m}"] + pwi[f"sin-,{n}{m}"]) * Ig[n](t)
+                Z00_q10 = 0.5 * (pwi[f"sin+,{n}{m}"] + pwi[f"sin-,{n}{m}"]) * Rg[n](t)
+                Z00_q01 = 0.5 * (pwi[f"cos-,{n}{m}"] + pwi[f"cos+,{n}{m}"]) * Ig[n](t)
+
+                Z00_q += -1j * (
+                    RuRu(m, n) * Z00_q00
+                    + RuRu(m, n) * Z00_q11
+                    + RuIu(m, n) * Z00_q10
+                    + RuIu(m, n) * Z00_q01
+                )
+        else:
+            n = m
             Z00_q00 = 0.5 * (pwi[f"cos-,{n}{m}"] + pwi[f"cos+,{n}{m}"]) * Rg[n](t)
             Z00_q11 = 0.5 * (pwi[f"sin+,{n}{m}"] + pwi[f"sin-,{n}{m}"]) * Ig[n](t)
             Z00_q10 = 0.5 * (pwi[f"sin+,{n}{m}"] + pwi[f"sin-,{n}{m}"]) * Rg[n](t)
@@ -220,7 +236,21 @@ def compute_F(tp):
         Z11_l = -1j * np.tensordot(Ru[m], pwi[f"sinp,{m}"], axes=(0, 0))
 
         Z11_q = 0
-        for n in np.arange(tp.pulses.n_pulses):
+        if cross_terms:
+            for n in np.arange(tp.pulses.n_pulses):
+                Z11_q00 = 0.5 * (pwi[f"sin+,{n}{m}"] - pwi[f"sin-,{n}{m}"]) * Rg[n](t)
+                Z11_q11 = 0.5 * (pwi[f"cos-,{n}{m}"] - pwi[f"cos+,{n}{m}"]) * Ig[n](t)
+                Z11_q10 = 0.5 * (pwi[f"cos-,{n}{m}"] - pwi[f"cos+,{n}{m}"]) * Rg[n](t)
+                Z11_q01 = 0.5 * (pwi[f"sin+,{n}{m}"] - pwi[f"sin-,{n}{m}"]) * Ig[n](t)
+
+                Z11_q += -1j * (
+                    RuRu(m, n) * Z11_q00
+                    + RuRu(m, n) * Z11_q11
+                    + RuIu(m, n) * Z11_q10
+                    + RuIu(m, n) * Z11_q01
+                )
+        else:
+            n = m
             Z11_q00 = 0.5 * (pwi[f"sin+,{n}{m}"] - pwi[f"sin-,{n}{m}"]) * Rg[n](t)
             Z11_q11 = 0.5 * (pwi[f"cos-,{n}{m}"] - pwi[f"cos+,{n}{m}"]) * Ig[n](t)
             Z11_q10 = 0.5 * (pwi[f"cos-,{n}{m}"] - pwi[f"cos+,{n}{m}"]) * Rg[n](t)
