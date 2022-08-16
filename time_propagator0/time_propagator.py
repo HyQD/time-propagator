@@ -366,11 +366,13 @@ class TimePropagator:
 
         logger.log(self.inputs("print_level"))
 
-    def setup_ground_state(self):
-        """set ground state and TD methods"""
-
+    def _init_cc(self):
         cc_kwargs = dict(verbose=False)
         self.cc = self.CC(self.system, **cc_kwargs)
+
+    def setup_ground_state(self):
+        """set ground state and TD methods"""
+        self._init_cc()
 
         ground_state_tolerance = self.inputs("ground_state_tolerance")
 
