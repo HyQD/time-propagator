@@ -614,11 +614,7 @@ class TimePropagator:
         integrator_params = self.inputs("integrator_params")
 
         if self.samples is not None:
-            t0 = (
-                np.max(self.samples["time_points"])
-                + self.inputs("initial_time")
-                + self.inputs("time_step")
-            )
+            t0 = np.max(self.samples["time_points"]) + self.inputs("time_step")
         else:
             t0 = self.inputs("initial_time")
 
