@@ -13,7 +13,7 @@ class Laser(metaclass=abc.ABCMeta):
 
     def set_sigma(self, sigma):
         self.sigma = sigma
-        self.sigma2 = sigma ** 2
+        self.sigma2 = sigma**2
 
     def set_tprime(self, tprime):
         self.tprime = tprime
@@ -43,7 +43,7 @@ class time_dependent_phase:
         return self.a + self.b * t + self.c * t * t
 
     def __call__(self, t):
-        t2 = t ** 2
+        t2 = t**2
         t3 = t2 * t
         return self.phi0 + self.a * t + self.b * t2 + self.c * t3
 
@@ -61,6 +61,19 @@ class discrete_delta_pulse:
             self.field_strength
             * np.heaviside(self.dt - dt, 0.0)
             * np.heaviside(self.dt + dt, 0.0)
+        )
+
+
+class discrete_delta_pulse_velocity:
+    def __init__(self, field_strength, dt, omega, t0=0.0, **kwargs):
+        self.A0 = field_strength / omega
+        self.dt = dt - dt * 1e-12
+        self.t0 = t0
+
+    def __call__(self, t):
+        dt = t - self.t0
+        return (
+            self.A0 * np.heaviside(self.dt - dt, 0.0) * np.heaviside(self.dt + dt, 0.0)
         )
 
 
@@ -276,7 +289,7 @@ class gaussian_A_plane_cos(Laser):
     def __call__(self, t):
         dt = t - self.t0
         pulse = (
-            np.exp(-(dt ** 2) / (2 * self.sigma2))
+            np.exp(-(dt**2) / (2 * self.sigma2))
             * np.cos(self.omega * dt + self._phase(dt))
             * self.A0
         )
@@ -304,7 +317,7 @@ class gaussian_A_plane_sin(Laser):
     def __call__(self, t):
         dt = t - self.t0
         pulse = (
-            np.exp(-(dt ** 2) / (2 * self.sigma2))
+            np.exp(-(dt**2) / (2 * self.sigma2))
             * np.sin(self.omega * dt + self._phase(dt))
             * self.A0
         )
@@ -332,7 +345,7 @@ class gaussian_A_velocity(Laser):
     def __call__(self, t):
         dt = t - self.t0
         pulse = (
-            np.exp(-(dt ** 2) / (2 * self.sigma2))
+            np.exp(-(dt**2) / (2 * self.sigma2))
             * np.cos(self.omega * dt + self._phase(dt))
             * self.A0
         )
@@ -346,7 +359,7 @@ class gaussian_A_length(Laser):
         self.omega = omega
         self.phase = phase
         self.t0 = t0
-        self.sigma2 = sigma ** 2
+        self.sigma2 = sigma**2
 
     @property
     def t0_at_center(self):
@@ -361,7 +374,7 @@ class gaussian_A_length(Laser):
     def __call__(self, t):
         dt = t - self.t0
         pulse = (
-            np.exp(-(dt ** 2) / (2 * self.sigma2))
+            np.exp(-(dt**2) / (2 * self.sigma2))
             * (
                 (dt / self.sigma2) * np.cos(self.omega * dt + self._phase(dt))
                 + self.omega * np.sin(self.omega * dt + self._phase(dt))
@@ -382,7 +395,7 @@ class gaussian_E_length(Laser):
         self.A0 = field_strength / omega
         self.omega = omega
         self.sigma = sigma
-        self.sigma2 = sigma ** 2
+        self.sigma2 = sigma**2
         self.phi = phase
         self.call_phi = callable(self.phi)
         self.t0 = t0
@@ -402,11 +415,11 @@ class gaussian_E_length(Laser):
 
     def _envelope(self, t):
         dt = t - self.t0
-        return np.exp(-(dt ** 2) / (2 * self.sigma2))
+        return np.exp(-(dt**2) / (2 * self.sigma2))
 
     def __call__(self, t):
         dt = t - self.t0
-        pulse = np.exp(-(dt ** 2) / (2 * self.sigma2)) * np.sin(
+        pulse = np.exp(-(dt**2) / (2 * self.sigma2)) * np.sin(
             self.omega * dt + self._phi(dt)
         )
         return self.field_strength * pulse
@@ -418,7 +431,7 @@ class gaussian_E_length_cos(Laser):
         self.A0 = field_strength / omega
         self.omega = omega
         self.sigma = sigma
-        self.sigma2 = sigma ** 2
+        self.sigma2 = sigma**2
         self.phi = phase
         self.call_phi = callable(self.phi)
         self.t0 = t0
@@ -438,11 +451,11 @@ class gaussian_E_length_cos(Laser):
 
     def _envelope(self, t):
         dt = t - self.t0
-        return np.exp(-(dt ** 2) / (2 * self.sigma2))
+        return np.exp(-(dt**2) / (2 * self.sigma2))
 
     def __call__(self, t):
         dt = t - self.t0
-        pulse = np.exp(-(dt ** 2) / (2 * self.sigma2)) * np.cos(
+        pulse = np.exp(-(dt**2) / (2 * self.sigma2)) * np.cos(
             self.omega * dt + self._phi(dt)
         )
         return self.field_strength * pulse
@@ -458,7 +471,7 @@ class gaussian_E_velocity(Laser):
         self.A0 = field_strength / omega
         self.omega = omega
         self.sigma = sigma
-        self.sigma2 = sigma ** 2
+        self.sigma2 = sigma**2
         self.phi = phase
         self.call_phi = callable(self.phi)
         self.t0 = t0
@@ -483,7 +496,7 @@ class gaussian_E_velocity(Laser):
 
     def _envelope(self, t):
         dt = t - self.t0
-        return np.exp(-(dt ** 2) / (2 * self.sigma2))
+        return np.exp(-(dt**2) / (2 * self.sigma2))
 
     def __call__(self, t):
         def f(time, sign):
@@ -496,7 +509,7 @@ class gaussian_E_velocity(Laser):
         pulse = (
             0.5
             * np.sqrt(self.sigma * np.pi / 2)
-            * np.exp(self.sigma2 * self.omega ** 2 / 2 - 1j * self._phi(t))
+            * np.exp(self.sigma2 * self.omega**2 / 2 - 1j * self._phi(t))
             * (
                 np.exp(2 * 1j * self._phi(t)) * (f(self.a, -1) - f(t, -1))
                 + f(self.a, 1)
@@ -869,7 +882,7 @@ class gaussian_laser:
     def __init__(self, field_strength, omega, sigma, phase=0.0, center=0.0, **kwargs):
         self.field_strength = field_strength
         self.omega = omega
-        self.sigma2 = sigma ** 2
+        self.sigma2 = sigma**2
         self.phi = phase
         self.call_phi = callable(self.phi)
         self.t0 = center
@@ -882,11 +895,11 @@ class gaussian_laser:
 
     def _envelope(self, t):
         dt = t - self.t0
-        return np.exp(-(dt ** 2) / (2 * self.sigma2))
+        return np.exp(-(dt**2) / (2 * self.sigma2))
 
     def __call__(self, t):
         dt = t - self.t0
-        pulse = np.exp(-(dt ** 2) / (2 * self.sigma2)) * np.sin(
+        pulse = np.exp(-(dt**2) / (2 * self.sigma2)) * np.sin(
             self.omega * dt + self._phi(dt)
         )
         return self.field_strength * pulse
@@ -909,8 +922,8 @@ class gaussian_laser_cos:
 
     def _envelope(self, t):
         dt = t - self.t0
-        s2 = self.sigma ** 2
-        f = np.exp(-(dt ** 2) / (2 * s2)) * self._cut(t)
+        s2 = self.sigma**2
+        f = np.exp(-(dt**2) / (2 * s2)) * self._cut(t)
         return f
 
     def __call__(self, t):
@@ -930,8 +943,9 @@ class gaussian_lasers_cos:
             pulse += laser(t)
         return pulse
 
+
 class gaussian_laser_crawford_group:
-    def __init__(self, field_strength, omega, sigma, center=0., **kwargs):
+    def __init__(self, field_strength, omega, sigma, center=0.0, **kwargs):
         self.field_strength = field_strength
         self.omega = omega
         self.sigma2 = sigma**2
@@ -939,15 +953,12 @@ class gaussian_laser_crawford_group:
 
     def _envelope(self, t):
         dt = t - self.t0
-        return np.exp(-dt**2/(2*self.sigma2))
+        return np.exp(-(dt**2) / (2 * self.sigma2))
 
     def __call__(self, t):
         dt = t - self.t0
-        pulse = (
-            np.exp(-dt**2/(2*self.sigma2))
-            * np.cos(self.omega * dt)
-        )
-        return self.field_strength*pulse
+        pulse = np.exp(-(dt**2) / (2 * self.sigma2)) * np.cos(self.omega * dt)
+        return self.field_strength * pulse
 
 
 if __name__ == "__main__":
