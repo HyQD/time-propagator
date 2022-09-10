@@ -182,8 +182,6 @@ def compute_F(tp):
 
     cross_terms = tp.inputs("cross_terms")
 
-    make_hermitian = False
-
     # F00,m and F01,m
     for m in np.arange(tp.pulses.n_pulses):
         # cos (i=1)
@@ -218,9 +216,7 @@ def compute_F(tp):
             )
 
         Z00 = Z00_l + Z00_q
-        F[0, 0, m] = tp.tdcc.compute_one_body_expectation_value(
-            tp.r.t, tp.r.y, Z00, make_hermitian=make_hermitian
-        )
+        F[0, 0, m] = tp.tdcc.compute_one_body_expectation_value(tp.r.t, tp.r.y, Z00)
 
         Z01_l = -1j * np.tensordot(Iu[m], pwi[f"cosp,{m}"], axes=(0, 0))
         Z01_q = 0
@@ -233,9 +229,7 @@ def compute_F(tp):
         )
 
         Z01 = Z01_l + Z01_q
-        F[0, 1, m] = tp.tdcc.compute_one_body_expectation_value(
-            tp.r.t, tp.r.y, Z01, make_hermitian=make_hermitian
-        )
+        F[0, 1, m] = tp.tdcc.compute_one_body_expectation_value(tp.r.t, tp.r.y, Z01)
 
         # F11,m and F10,m
         # sin (i=2)
@@ -270,9 +264,7 @@ def compute_F(tp):
             )
 
         Z11 = Z11_l + Z11_q
-        F[1, 1, m] = tp.tdcc.compute_one_body_expectation_value(
-            tp.r.t, tp.r.y, Z11, make_hermitian=make_hermitian
-        )
+        F[1, 1, m] = tp.tdcc.compute_one_body_expectation_value(tp.r.t, tp.r.y, Z11)
 
         Z10_l = -1j * np.tensordot(Iu[m], pwi[f"sinp,{m}"], axes=(0, 0))
         Z10_q = 0
@@ -285,9 +277,7 @@ def compute_F(tp):
         )
 
         Z10 = Z10_l + Z10_q
-        F[1, 0, m] = tp.tdcc.compute_one_body_expectation_value(
-            tp.r.t, tp.r.y, Z10, make_hermitian=make_hermitian
-        )
+        F[1, 0, m] = tp.tdcc.compute_one_body_expectation_value(tp.r.t, tp.r.y, Z10)
 
     return F
 
