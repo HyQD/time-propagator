@@ -781,9 +781,6 @@ class TimePropagator:
         for _ in tqdm.tqdm(time_points[i0:f0], disable=disable_tqdm):
             i = self.iter
 
-            # if not i%10:
-            #    print (f'{i} / {self.num_steps}')
-
             self.samples["time_points"][i] = self.r.t
 
             # Sample
@@ -796,7 +793,6 @@ class TimePropagator:
             self.r.integrate(self.r.t + self.inputs("time_step"))
             if not self.r.successful():
                 warnings.warn("Time integration step did not converge.")
-                break
 
             self.iter += 1
 
