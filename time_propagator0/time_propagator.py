@@ -267,6 +267,17 @@ class TimePropagator:
 
         self.set_quantum_system(system, self.system_values.C)
 
+        """         if self.init_from_output and self.inputs("method") == "romp2":
+            print ('...transforming OMP...')
+            self._init_cc()
+
+            ground_state_tolerance = self.inputs("ground_state_tolerance")
+
+            self.cc.compute_ground_state(
+                tol=ground_state_tolerance,
+                termination_tol=ground_state_tolerance,
+            ) """
+
         logger.log(self.inputs("print_level"), values=[program])
         logger.log(
             self.inputs("print_level"),
@@ -385,6 +396,7 @@ class TimePropagator:
         elif self.correlated:
             if self.orbital_adaptive:
                 self.cc.compute_ground_state(
+                    change_system_basis=False,
                     tol=ground_state_tolerance,
                     termination_tol=ground_state_tolerance,
                 )
