@@ -33,11 +33,15 @@ class IntegralContainer(metaclass=abc.ABCMeta):
     def C_tilde(self, C_tilde):
         self._C_tilde = C_tilde
 
-    def change_basis(self):
-        for el in self._integrals:
-            self._integrals[el] = self.C_tilde @ self._integrals[el] @ self.C
-        self.C = np.eye(len(self.C))
-        self.C_tilde = np.eye(len(self.C_tilde))
+    def change_basis(self,C=None,C_tilde=None):
+        if C is None:
+            for el in self._integrals:
+                self._integrals[el] = self.C_tilde @ self._integrals[el] @ self.C
+            self.C = np.eye(len(self.C))
+            self.C_tilde = np.eye(len(self.C_tilde))
+        else:
+            for el in self._integrals:
+                self._integrals[el] = C_tilde @ self._integrals[el] @ C
 
     @abc.abstractmethod
     def __getitem__(self, index):
