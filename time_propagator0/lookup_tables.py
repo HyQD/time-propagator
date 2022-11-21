@@ -75,6 +75,14 @@ Methods = {
         "correlated": True,
         "orbital_adaptive": False,
     },
+    "eomccsd": {
+        "module": "eom_coupled_cluster.ccsd",
+        "cc": "EOMCCSD",
+        "tdcc": "TDEOMCCSD",
+        "restricted": False,
+        "correlated": True,
+        "orbital_adaptive": False,
+    },
     "omp2": {
         "module": "optimized_mp2.omp2",
         "cc": "OMP2",
