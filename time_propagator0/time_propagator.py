@@ -405,6 +405,8 @@ class TimePropagator:
                     t_kwargs=dict(tol=ground_state_tolerance),
                     l_kwargs=dict(tol=ground_state_tolerance),
                 )
+            if self.inputs("method")[:3] == "eom":
+                self.change_basis_plane_wave_integrals(self.cc.C,self.cc.C_tilde)
             y0 = self.cc.get_amplitudes(get_t_0=True).asarray()
         else:
             y0 = np.identity(len(self.system_values.C)).ravel()
@@ -496,6 +498,10 @@ class TimePropagator:
 
         logger.log(self.inputs("print_level"))
 
+    def change_basis_plane_wave_integrals(self,C,C_tilde):
+        if self.pwi_container is not None:
+            self.pwi_container.change_basis(C,C_tilde)
+
     def setup_pulses(self):
         pulse_inputs = []
         for el in self.inputs("pulses"):
@@ -523,15 +529,15 @@ class TimePropagator:
 
         if self.system is None:
             self.setup_quantum_system()
-        if self.y0 is None:
-            self.setup_ground_state()
-        if (compute_projectors) and (self.states_container is None):
-            self.setup_projectors()
         if (
             self.inputs("laser_approx") == "plane_wave"
             or self.inputs("sample_general_response")
         ) and (self.pwi_container is None):
             self.setup_plane_wave_integrals()
+        if self.y0 is None:
+            self.setup_ground_state()
+        if (compute_projectors) and (self.states_container is None):
+            self.setup_projectors()
 
         self._build_hamiltonian()
         self._build_sampling_arrays()
@@ -642,7 +648,10 @@ class TimePropagator:
         if module is not None:
             getattr(importlib.import_module(module), name)
 
-        self.tdcc = self.TDCC(self.system)
+        if self.inputs("method")[:3] == "eom":
+            self.tdcc = self.TDCC(self.system,[self.cc.t_2])
+        else:
+            self.tdcc = self.TDCC(self.system)
 
         self.r = complex_ode(self.tdcc).set_integrator(name, **integrator_params)
         self.r.set_initial_value(self.y0, t0)
