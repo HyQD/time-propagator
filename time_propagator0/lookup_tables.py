@@ -19,6 +19,14 @@ Methods = {
         "correlated": True,
         "orbital_adaptive": False,
     },
+    "reomccsd": {
+        "module": "eom_coupled_cluster.rccsd",
+        "cc": "REOMCCSD",
+        "tdcc": "TDREOMCCSD",
+        "restricted": True,
+        "correlated": True,
+        "orbital_adaptive": False,
+    },
     "romp2": {
         "module": "optimized_mp2.romp2",
         "cc": "ROMP2",
