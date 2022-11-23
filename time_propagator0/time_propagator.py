@@ -406,7 +406,7 @@ class TimePropagator:
                     l_kwargs=dict(tol=ground_state_tolerance),
                 )
             if self.inputs("method")[:3] == "eom":
-                self.change_basis_plane_wave_integrals(self.cc.C,self.cc.C_tilde)
+                self.change_basis_plane_wave_integrals(self.cc.C, self.cc.C_tilde)
             y0 = self.cc.get_amplitudes(get_t_0=True).asarray()
         else:
             y0 = np.identity(len(self.system_values.C)).ravel()
@@ -498,9 +498,9 @@ class TimePropagator:
 
         logger.log(self.inputs("print_level"))
 
-    def change_basis_plane_wave_integrals(self,C,C_tilde):
+    def change_basis_plane_wave_integrals(self, C, C_tilde):
         if self.pwi_container is not None:
-            self.pwi_container.change_basis(C,C_tilde)
+            self.pwi_container.change_basis(C, C_tilde)
 
     def setup_pulses(self):
         pulse_inputs = []
@@ -648,8 +648,8 @@ class TimePropagator:
         if module is not None:
             getattr(importlib.import_module(module), name)
 
-        if self.inputs("method")[:3] == "eom":
-            self.tdcc = self.TDCC(self.system,[self.cc.t_2])
+        if self.inputs("method")[:3] == "eom" or self.inputs("method")[:4] == "reom":
+            self.tdcc = self.TDCC(self.system, [self.cc.t_2])
         else:
             self.tdcc = self.TDCC(self.system)
 
