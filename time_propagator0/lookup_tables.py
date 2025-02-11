@@ -396,6 +396,9 @@ InputRequirements = {
     "sample_general_response": {
         "dtypes": ("bool",),
     },
+    "sample_general_response-cross_terms": {
+        "dtypes": ("bool",),
+    },
     "load_all_response_vectors": {
         "dtypes": ("bool",),
     },
